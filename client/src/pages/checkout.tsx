@@ -7,7 +7,7 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
-import { ArrowLeft, CreditCard, Shield, Smartphone, CreditCard as CardIcon, CheckCircle, Star, Lock } from "lucide-react";
+import { ArrowLeft, CreditCard, Shield, Smartphone, CreditCard as CardIcon, CheckCircle, Star, Lock, Package } from "lucide-react";
 import { useLocation } from "wouter";
 import type { CartWithItems } from "@shared/schema";
 
@@ -91,27 +91,25 @@ const CheckoutForm = ({ cart }: { cart: CartWithItems }) => {
   const total = subtotal + tax;
 
   return (
-    <div className="min-h-screen gradient-dark-bg">
+    <div className="min-h-screen modern-gradient-bg">
       {/* Modern Header */}
-      <header className="glass-dark-effect border-b border-green-500/20 sticky top-0 z-40">
-        <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
+      <header className="modern-header sticky top-0 z-40">
+        <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-16">
             <Button
               variant="ghost"
               onClick={() => setLocation("/")}
-              className="flex items-center text-gray-300 hover:text-white hover:bg-white/10"
+              className="flex items-center text-gray-600 hover:text-gray-900"
               data-testid="button-back-to-cart"
             >
               <ArrowLeft className="mr-2 h-4 w-4" />
               Back to Cart
             </Button>
             <div className="text-center">
-              <h1 className="text-xl font-bold text-white">
-                Secure Checkout
-              </h1>
-              <p className="text-sm text-gray-300">Protected by SSL encryption</p>
+              <h1 className="text-xl font-bold text-gray-900">Secure Checkout</h1>
+              <p className="text-sm text-gray-500">Protected by SSL encryption</p>
             </div>
-            <div className="flex items-center space-x-2 text-sm text-gray-300">
+            <div className="flex items-center space-x-2 text-sm text-gray-500">
               <Lock className="h-4 w-4" />
               <span>Secure</span>
             </div>
@@ -119,12 +117,12 @@ const CheckoutForm = ({ cart }: { cart: CartWithItems }) => {
         </div>
       </header>
 
-      <main className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      <main className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <div className="grid grid-cols-1 lg:grid-cols-5 gap-8">
           
           {/* Payment Form - Takes 3 columns */}
           <div className="lg:col-span-3">
-            <Card className="shadow-xl border-0 glass-light border-green-500/20 shadow-green animate-slide-up">
+            <Card className="modern-card">
               <CardContent className="p-8">
                 <div className="flex items-center space-x-3 mb-8">
                   <div className="w-10 h-10 primary-gradient rounded-2xl flex items-center justify-center">
@@ -140,58 +138,64 @@ const CheckoutForm = ({ cart }: { cart: CartWithItems }) => {
                 <div className="mb-8">
                   <RadioGroup value={paymentMethod} onValueChange={setPaymentMethod} className="space-y-4">
                     {/* Card Payment */}
-                    <div className={`p-4 rounded-2xl border-2 transition-all cursor-pointer ${
+                    <div className={`p-6 rounded-2xl border-2 transition-all cursor-pointer ${
                       paymentMethod === 'card' 
                         ? 'border-green-500 bg-green-50/50' 
                         : 'border-gray-200 hover:border-gray-300'
                     }`}>
-                      <div className="flex items-center space-x-3">
+                      <div className="flex items-center space-x-4">
                         <RadioGroupItem value="card" id="card" />
-                        <Label htmlFor="card" className="flex items-center space-x-3 cursor-pointer flex-1">
-                          <CardIcon className="h-5 w-5 text-green-600" />
-                          <div>
-                            <span className="font-medium text-gray-900">Credit/Debit Card</span>
+                        <Label htmlFor="card" className="flex items-center space-x-4 cursor-pointer flex-1">
+                          <div className="w-12 h-12 bg-blue-100 rounded-2xl flex items-center justify-center">
+                            <CardIcon className="h-6 w-6 text-blue-600" />
+                          </div>
+                          <div className="flex-1">
+                            <div className="font-semibold text-gray-900">Credit/Debit Card</div>
                             <p className="text-sm text-gray-500">Visa, Mastercard, RuPay accepted</p>
                           </div>
                         </Label>
-                        <div className="flex space-x-1">
-                          <div className="w-8 h-5 bg-blue-600 rounded text-white text-xs flex items-center justify-center font-bold">V</div>
-                          <div className="w-8 h-5 bg-red-600 rounded text-white text-xs flex items-center justify-center font-bold">M</div>
+                        <div className="flex space-x-2">
+                          <div className="w-10 h-6 bg-blue-600 rounded text-white text-xs flex items-center justify-center font-bold">VISA</div>
+                          <div className="w-10 h-6 bg-red-600 rounded text-white text-xs flex items-center justify-center font-bold">MC</div>
                         </div>
                       </div>
                     </div>
                     
                     {/* UPI Payment */}
-                    <div className={`p-4 rounded-2xl border-2 transition-all cursor-pointer ${
+                    <div className={`p-6 rounded-2xl border-2 transition-all cursor-pointer ${
                       paymentMethod === 'upi' 
                         ? 'border-green-500 bg-green-50/50' 
                         : 'border-gray-200 hover:border-gray-300'
                     }`}>
-                      <div className="flex items-center space-x-3">
+                      <div className="flex items-center space-x-4">
                         <RadioGroupItem value="upi" id="upi" />
-                        <Label htmlFor="upi" className="flex items-center space-x-3 cursor-pointer flex-1">
-                          <Smartphone className="h-5 w-5 text-green-600" />
-                          <div>
-                            <span className="font-medium text-gray-900">UPI Payment</span>
+                        <Label htmlFor="upi" className="flex items-center space-x-4 cursor-pointer flex-1">
+                          <div className="w-12 h-12 bg-green-100 rounded-2xl flex items-center justify-center">
+                            <Smartphone className="h-6 w-6 text-green-600" />
+                          </div>
+                          <div className="flex-1">
+                            <div className="font-semibold text-gray-900">UPI Payment</div>
                             <p className="text-sm text-gray-500">Pay with Google Pay, PhonePe, Paytm</p>
                           </div>
                         </Label>
-                        <div className="text-green-600 text-sm font-medium">Instant</div>
+                        <div className="bg-green-100 text-green-700 text-sm font-medium px-3 py-1 rounded-full">Instant</div>
                       </div>
                     </div>
                     
                     {/* Net Banking */}
-                    <div className={`p-4 rounded-2xl border-2 transition-all cursor-pointer ${
+                    <div className={`p-6 rounded-2xl border-2 transition-all cursor-pointer ${
                       paymentMethod === 'netbanking' 
-                        ? 'border-purple-500 bg-purple-50/50' 
+                        ? 'border-green-500 bg-green-50/50' 
                         : 'border-gray-200 hover:border-gray-300'
                     }`}>
-                      <div className="flex items-center space-x-3">
+                      <div className="flex items-center space-x-4">
                         <RadioGroupItem value="netbanking" id="netbanking" />
-                        <Label htmlFor="netbanking" className="flex items-center space-x-3 cursor-pointer flex-1">
-                          <CreditCard className="h-5 w-5 text-purple-600" />
-                          <div>
-                            <span className="font-medium text-gray-900">Net Banking</span>
+                        <Label htmlFor="netbanking" className="flex items-center space-x-4 cursor-pointer flex-1">
+                          <div className="w-12 h-12 bg-purple-100 rounded-2xl flex items-center justify-center">
+                            <CreditCard className="h-6 w-6 text-purple-600" />
+                          </div>
+                          <div className="flex-1">
+                            <div className="font-semibold text-gray-900">Net Banking</div>
                             <p className="text-sm text-gray-500">50+ banks supported</p>
                           </div>
                         </Label>
@@ -203,23 +207,23 @@ const CheckoutForm = ({ cart }: { cart: CartWithItems }) => {
                 {/* Payment Form */}
                 <form onSubmit={handlePayment} className="space-y-6">
                   {paymentMethod === "card" && (
-                    <div className="space-y-4 animate-fade-in">
+                    <div className="space-y-6 animate-fade-in">
                       <div>
                         <Label htmlFor="cardNumber" className="text-sm font-medium text-gray-700">Card Number</Label>
                         <Input 
                           id="cardNumber"
                           placeholder="1234 5678 9012 3456"
-                          className="mt-1 h-12 rounded-xl border-gray-200 focus:border-blue-500"
+                          className="mt-2 h-12 rounded-xl border-gray-200 focus:border-green-500"
                           data-testid="input-card-number"
                         />
                       </div>
-                      <div className="grid grid-cols-2 gap-4">
+                      <div className="grid grid-cols-2 gap-6">
                         <div>
                           <Label htmlFor="expiry" className="text-sm font-medium text-gray-700">Expiry Date</Label>
                           <Input 
                             id="expiry"
                             placeholder="MM/YY"
-                            className="mt-1 h-12 rounded-xl border-gray-200 focus:border-blue-500"
+                            className="mt-2 h-12 rounded-xl border-gray-200 focus:border-green-500"
                             data-testid="input-expiry"
                           />
                         </div>
@@ -228,7 +232,7 @@ const CheckoutForm = ({ cart }: { cart: CartWithItems }) => {
                           <Input 
                             id="cvv"
                             placeholder="123"
-                            className="mt-1 h-12 rounded-xl border-gray-200 focus:border-blue-500"
+                            className="mt-2 h-12 rounded-xl border-gray-200 focus:border-green-500"
                             data-testid="input-cvv"
                           />
                         </div>
@@ -242,7 +246,7 @@ const CheckoutForm = ({ cart }: { cart: CartWithItems }) => {
                       <Input 
                         id="upiId"
                         placeholder="yourname@paytm"
-                        className="mt-1 h-12 rounded-xl border-gray-200 focus:border-green-500"
+                        className="mt-2 h-12 rounded-xl border-gray-200 focus:border-green-500"
                         data-testid="input-upi-id"
                       />
                       <p className="text-xs text-gray-500 mt-2">Enter your UPI ID to proceed with payment</p>
@@ -252,7 +256,7 @@ const CheckoutForm = ({ cart }: { cart: CartWithItems }) => {
                   <Button
                     type="submit"
                     disabled={isProcessing}
-                    className="w-full h-14 primary-gradient hover:shadow-lg transition-all duration-300 rounded-xl font-semibold text-lg"
+                    className="w-full h-14 primary-gradient text-lg font-semibold rounded-2xl shadow-lg hover:shadow-xl transition-all duration-300"
                     data-testid="button-complete-payment"
                   >
                     {isProcessing ? (
@@ -274,27 +278,27 @@ const CheckoutForm = ({ cart }: { cart: CartWithItems }) => {
 
           {/* Order Summary - Takes 2 columns */}
           <div className="lg:col-span-2">
-            <Card className="shadow-xl border-0 glass-light border-green-500/20 shadow-green sticky top-24 animate-slide-up" style={{ animationDelay: '0.2s' }}>
+            <Card className="modern-card sticky top-24">
               <CardContent className="p-6">
-                <div className="flex items-center space-x-2 mb-6">
-                  <CheckCircle className="h-5 w-5 text-green-600" />
+                <div className="flex items-center space-x-3 mb-6">
+                  <div className="w-8 h-8 bg-green-100 rounded-xl flex items-center justify-center">
+                    <CheckCircle className="h-5 w-5 text-green-600" />
+                  </div>
                   <h3 className="text-lg font-semibold text-gray-900">Order Summary</h3>
                 </div>
                 
                 {/* Order Items */}
-                <div className="space-y-3 mb-6">
+                <div className="space-y-4 mb-6">
                   {cart.items.map((item) => (
-                    <div key={item.id} className="flex items-center space-x-3 p-3 bg-gray-50 rounded-xl">
-                      <img 
-                        src={item.product.imageUrl || ''} 
-                        alt={item.product.name}
-                        className="w-12 h-12 object-cover rounded-lg"
-                      />
+                    <div key={item.id} className="flex items-center space-x-3 p-4 bg-gray-50 rounded-2xl">
+                      <div className="w-12 h-12 bg-gray-200 rounded-xl flex items-center justify-center">
+                        <Package className="h-6 w-6 text-gray-400" />
+                      </div>
                       <div className="flex-1">
                         <p className="font-medium text-gray-900 text-sm">{item.product.name}</p>
                         <p className="text-xs text-gray-500">Qty: {item.quantity}</p>
                       </div>
-                      <p className="font-medium text-gray-900">
+                      <p className="font-semibold text-gray-900">
                         ₹{(parseFloat(item.product.price) * item.quantity).toFixed(2)}
                       </p>
                     </div>
@@ -333,7 +337,7 @@ const CheckoutForm = ({ cart }: { cart: CartWithItems }) => {
                 </div>
 
                 {/* Security Info */}
-                <div className="mt-6 p-4 bg-gradient-to-r from-green-50 to-blue-50 rounded-xl border border-green-200/50">
+                <div className="mt-6 p-4 bg-gradient-to-r from-green-50 to-blue-50 rounded-2xl border border-green-200/50">
                   <div className="flex items-start space-x-3">
                     <Shield className="h-5 w-5 text-green-600 mt-0.5" />
                     <div>
@@ -382,9 +386,9 @@ export default function Checkout() {
 
   if (cartLoading) {
     return (
-      <div className="h-screen gradient-bg flex items-center justify-center">
+      <div className="h-screen modern-gradient-bg flex items-center justify-center">
         <div className="text-center">
-          <div className="animate-spin w-12 h-12 border-4 border-blue-600 border-t-transparent rounded-full mx-auto mb-4" />
+          <div className="animate-spin w-12 h-12 border-4 border-green-600 border-t-transparent rounded-full mx-auto mb-4" />
           <p className="text-gray-600 font-medium">Preparing your checkout...</p>
         </div>
       </div>
