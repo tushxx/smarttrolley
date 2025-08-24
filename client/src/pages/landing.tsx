@@ -32,13 +32,13 @@ export default function Landing() {
   };
 
   return (
-    <div className="min-h-screen gradient-bg">
+    <div className="min-h-screen gradient-dark-bg">
       {/* Hero Section */}
       <div className="relative overflow-hidden">
         {/* Background decorations */}
-        <div className="absolute inset-0 bg-gradient-to-r from-blue-400/10 via-purple-400/10 to-pink-400/10"></div>
-        <div className="absolute -top-20 -right-20 w-80 h-80 bg-gradient-to-br from-blue-400/20 to-purple-600/20 rounded-full blur-3xl"></div>
-        <div className="absolute -bottom-20 -left-20 w-80 h-80 bg-gradient-to-br from-green-400/20 to-blue-600/20 rounded-full blur-3xl"></div>
+        <div className="absolute inset-0 bg-gradient-to-r from-green-400/10 via-emerald-400/10 to-green-600/10"></div>
+        <div className="absolute -top-20 -right-20 w-80 h-80 bg-gradient-to-br from-green-400/30 to-emerald-600/30 rounded-full blur-3xl"></div>
+        <div className="absolute -bottom-20 -left-20 w-80 h-80 bg-gradient-to-br from-emerald-400/30 to-green-800/30 rounded-full blur-3xl"></div>
         
         <div className="relative flex flex-col justify-center min-h-screen py-12 px-4 sm:px-6 lg:px-8">
           {/* Header */}
@@ -46,39 +46,39 @@ export default function Landing() {
             <div className="mx-auto h-24 w-24 primary-gradient rounded-3xl flex items-center justify-center mb-8 shadow-xl animate-bounce-gentle">
               <ShoppingCart className="text-white h-12 w-12" />
             </div>
-            <h1 className="text-6xl font-bold bg-gradient-to-r from-gray-900 via-blue-800 to-gray-900 bg-clip-text text-transparent mb-4">
+            <h1 className="text-6xl font-bold bg-gradient-to-r from-white via-green-300 to-white bg-clip-text text-transparent mb-4">
               SmartCart
             </h1>
-            <p className="text-xl text-gray-600 mb-8 max-w-2xl mx-auto">
+            <p className="text-xl text-gray-300 mb-8 max-w-2xl mx-auto">
               Experience the future of shopping with intelligent barcode scanning, seamless payments, and instant cart management
             </p>
             
             {/* Features showcase */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6 max-w-4xl mx-auto mb-12">
-              <div className="bg-white/60 backdrop-blur-sm rounded-2xl p-6 border border-white/20 animate-slide-up">
-                <QrCode className="h-8 w-8 text-blue-600 mx-auto mb-3" />
-                <h3 className="font-semibold text-gray-900 mb-2">Smart Scanning</h3>
-                <p className="text-sm text-gray-600">Instant barcode recognition with AI-powered product detection</p>
+              <div className="glass-dark-effect rounded-2xl p-6 animate-slide-up">
+                <QrCode className="h-8 w-8 text-green-400 mx-auto mb-3" />
+                <h3 className="font-semibold text-white mb-2">Smart Scanning</h3>
+                <p className="text-sm text-gray-300">Instant barcode recognition with AI-powered product detection</p>
               </div>
-              <div className="bg-white/60 backdrop-blur-sm rounded-2xl p-6 border border-white/20 animate-slide-up" style={{ animationDelay: '0.2s' }}>
-                <Zap className="h-8 w-8 text-green-600 mx-auto mb-3" />
-                <h3 className="font-semibold text-gray-900 mb-2">Lightning Fast</h3>
-                <p className="text-sm text-gray-600">Add items to cart in seconds with real-time inventory sync</p>
+              <div className="glass-dark-effect rounded-2xl p-6 animate-slide-up" style={{ animationDelay: '0.2s' }}>
+                <Zap className="h-8 w-8 text-green-400 mx-auto mb-3" />
+                <h3 className="font-semibold text-white mb-2">Lightning Fast</h3>
+                <p className="text-sm text-gray-300">Add items to cart in seconds with real-time inventory sync</p>
               </div>
-              <div className="bg-white/60 backdrop-blur-sm rounded-2xl p-6 border border-white/20 animate-slide-up" style={{ animationDelay: '0.4s' }}>
-                <Shield className="h-8 w-8 text-purple-600 mx-auto mb-3" />
-                <h3 className="font-semibold text-gray-900 mb-2">Secure Payments</h3>
-                <p className="text-sm text-gray-600">Integrated Razorpay for UPI, cards, and net banking</p>
+              <div className="glass-dark-effect rounded-2xl p-6 animate-slide-up" style={{ animationDelay: '0.4s' }}>
+                <Shield className="h-8 w-8 text-green-400 mx-auto mb-3" />
+                <h3 className="font-semibold text-white mb-2">Secure Payments</h3>
+                <p className="text-sm text-gray-300">Integrated Razorpay for UPI, cards, and net banking</p>
               </div>
             </div>
           </div>
 
           {/* Login Card */}
           <div className="max-w-md mx-auto w-full animate-slide-up" style={{ animationDelay: '0.6s' }}>
-            <Card className="shadow-2xl border-0 bg-white/80 backdrop-blur-lg">
+            <Card className="shadow-2xl border-0 glass-light">
               <CardContent className="p-8">
                 <div className="text-center mb-6">
-                  <Sparkles className="h-6 w-6 text-blue-600 mx-auto mb-2" />
+                  <Sparkles className="h-6 w-6 text-green-600 mx-auto mb-2" />
                   <h2 className="text-2xl font-bold text-gray-900">Get Started</h2>
                   <p className="text-gray-600 mt-1">Join the smart shopping revolution</p>
                 </div>
@@ -100,7 +100,7 @@ export default function Landing() {
                         value={mobileNumber}
                         onChange={(e) => setMobileNumber(e.target.value)}
                         placeholder="+91 98765 43210"
-                        className="pl-11 h-12 border-gray-200 focus:border-blue-500 focus:ring-blue-500 rounded-xl"
+                        className="pl-11 h-12 border-gray-200 focus:border-green-500 focus:ring-green-500 rounded-xl"
                         data-testid="input-mobile"
                       />
                     </div>

@@ -91,27 +91,27 @@ const CheckoutForm = ({ cart }: { cart: CartWithItems }) => {
   const total = subtotal + tax;
 
   return (
-    <div className="min-h-screen gradient-bg">
+    <div className="min-h-screen gradient-dark-bg">
       {/* Modern Header */}
-      <header className="glass-effect border-b border-white/20 sticky top-0 z-40">
+      <header className="glass-dark-effect border-b border-green-500/20 sticky top-0 z-40">
         <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-16">
             <Button
               variant="ghost"
               onClick={() => setLocation("/")}
-              className="flex items-center text-gray-600 hover:text-gray-900 hover:bg-white/50"
+              className="flex items-center text-gray-300 hover:text-white hover:bg-white/10"
               data-testid="button-back-to-cart"
             >
               <ArrowLeft className="mr-2 h-4 w-4" />
               Back to Cart
             </Button>
             <div className="text-center">
-              <h1 className="text-xl font-bold bg-gradient-to-r from-gray-900 to-gray-700 bg-clip-text text-transparent">
+              <h1 className="text-xl font-bold text-white">
                 Secure Checkout
               </h1>
-              <p className="text-sm text-gray-500">Protected by SSL encryption</p>
+              <p className="text-sm text-gray-300">Protected by SSL encryption</p>
             </div>
-            <div className="flex items-center space-x-2 text-sm text-gray-500">
+            <div className="flex items-center space-x-2 text-sm text-gray-300">
               <Lock className="h-4 w-4" />
               <span>Secure</span>
             </div>
@@ -124,7 +124,7 @@ const CheckoutForm = ({ cart }: { cart: CartWithItems }) => {
           
           {/* Payment Form - Takes 3 columns */}
           <div className="lg:col-span-3">
-            <Card className="shadow-xl border-0 bg-white/80 backdrop-blur-sm animate-slide-up">
+            <Card className="shadow-xl border-0 glass-light border-green-500/20 shadow-green animate-slide-up">
               <CardContent className="p-8">
                 <div className="flex items-center space-x-3 mb-8">
                   <div className="w-10 h-10 primary-gradient rounded-2xl flex items-center justify-center">
@@ -142,13 +142,13 @@ const CheckoutForm = ({ cart }: { cart: CartWithItems }) => {
                     {/* Card Payment */}
                     <div className={`p-4 rounded-2xl border-2 transition-all cursor-pointer ${
                       paymentMethod === 'card' 
-                        ? 'border-blue-500 bg-blue-50/50' 
+                        ? 'border-green-500 bg-green-50/50' 
                         : 'border-gray-200 hover:border-gray-300'
                     }`}>
                       <div className="flex items-center space-x-3">
                         <RadioGroupItem value="card" id="card" />
                         <Label htmlFor="card" className="flex items-center space-x-3 cursor-pointer flex-1">
-                          <CardIcon className="h-5 w-5 text-blue-600" />
+                          <CardIcon className="h-5 w-5 text-green-600" />
                           <div>
                             <span className="font-medium text-gray-900">Credit/Debit Card</span>
                             <p className="text-sm text-gray-500">Visa, Mastercard, RuPay accepted</p>
@@ -274,7 +274,7 @@ const CheckoutForm = ({ cart }: { cart: CartWithItems }) => {
 
           {/* Order Summary - Takes 2 columns */}
           <div className="lg:col-span-2">
-            <Card className="shadow-xl border-0 bg-white/80 backdrop-blur-sm sticky top-24 animate-slide-up" style={{ animationDelay: '0.2s' }}>
+            <Card className="shadow-xl border-0 glass-light border-green-500/20 shadow-green sticky top-24 animate-slide-up" style={{ animationDelay: '0.2s' }}>
               <CardContent className="p-6">
                 <div className="flex items-center space-x-2 mb-6">
                   <CheckCircle className="h-5 w-5 text-green-600" />
@@ -325,7 +325,7 @@ const CheckoutForm = ({ cart }: { cart: CartWithItems }) => {
                   <div className="border-t pt-3">
                     <div className="flex justify-between text-lg font-bold">
                       <span>Total</span>
-                      <span className="text-blue-600" data-testid="text-total">
+                      <span className="text-green-600" data-testid="text-total">
                         ₹{total.toFixed(2)}
                       </span>
                     </div>

@@ -110,34 +110,34 @@ export default function Home() {
   }
 
   return (
-    <div className="min-h-screen gradient-bg">
+    <div className="min-h-screen gradient-dark-bg">
       {/* Modern Header */}
-      <header className="sticky top-0 z-50 glass-effect border-b border-white/20">
+      <header className="sticky top-0 z-50 glass-dark-effect border-b border-green-500/20">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center h-16">
             {/* Logo */}
             <div className="flex items-center">
-              <div className="h-10 w-10 primary-gradient rounded-2xl flex items-center justify-center shadow-lg">
+              <div className="h-10 w-10 primary-gradient rounded-2xl flex items-center justify-center shadow-lg shadow-green">
                 <ShoppingCart className="text-white h-5 w-5" />
               </div>
               <div className="ml-3">
-                <h1 className="text-xl font-bold bg-gradient-to-r from-gray-900 to-gray-700 bg-clip-text text-transparent">
+                <h1 className="text-xl font-bold text-white">
                   SmartCart
                 </h1>
-                <p className="text-xs text-gray-500">Smart Shopping</p>
+                <p className="text-xs text-gray-300">Smart Shopping</p>
               </div>
             </div>
             
             {/* Header Stats */}
             <div className="flex items-center space-x-6">
               {/* Cart Summary Badge */}
-              <div className="flex items-center space-x-3 bg-white/70 backdrop-blur-sm rounded-full px-4 py-2 border border-white/30">
-                <ShoppingCart className="h-4 w-4 text-blue-600" />
+              <div className="flex items-center space-x-3 glass-dark-effect rounded-full px-4 py-2">
+                <ShoppingCart className="h-4 w-4 text-green-400" />
                 <div className="text-sm">
-                  <span className="font-semibold text-gray-900" data-testid="text-cart-count">
+                  <span className="font-semibold text-white" data-testid="text-cart-count">
                     {cart?.items?.length || 0}
                   </span>
-                  <span className="text-gray-500 ml-1">items</span>
+                  <span className="text-gray-300 ml-1">items</span>
                 </div>
                 {cart?.items && cart.items.length > 0 && (
                   <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
@@ -147,16 +147,16 @@ export default function Home() {
               {/* User Menu */}
               <div className="flex items-center space-x-3">
                 <div className="text-right hidden sm:block">
-                  <p className="text-sm font-medium text-gray-900">
+                  <p className="text-sm font-medium text-white">
                     {(user as any)?.firstName || user?.email?.split('@')[0] || 'User'}
                   </p>
-                  <p className="text-xs text-gray-500">Welcome back!</p>
+                  <p className="text-xs text-gray-300">Welcome back!</p>
                 </div>
                 <Button
                   onClick={handleLogout}
                   variant="ghost"
                   size="sm"
-                  className="text-gray-600 hover:text-gray-900 hover:bg-white/50"
+                  className="text-gray-300 hover:text-white hover:bg-white/10"
                   data-testid="button-logout"
                 >
                   <LogOut className="h-4 w-4" />
@@ -202,10 +202,10 @@ export default function Home() {
 
         {/* Welcome Section */}
         <div className="mb-8 text-center animate-fade-in">
-          <h2 className="text-3xl font-bold text-gray-900 mb-2">
+          <h2 className="text-3xl font-bold text-white mb-2">
             Welcome to Your Smart Cart
           </h2>
-          <p className="text-gray-600 max-w-2xl mx-auto">
+          <p className="text-gray-300 max-w-2xl mx-auto">
             Scan barcodes to add items instantly, manage your cart effortlessly, and checkout securely with Razorpay
           </p>
         </div>
@@ -213,7 +213,7 @@ export default function Home() {
         {/* Quick Actions */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
           {/* Scan to Add */}
-          <Card className="card-hover animate-slide-up cursor-pointer" onClick={() => setShowScanner(true)}>
+          <Card className="card-hover animate-slide-up cursor-pointer glass-light border-green-500/20 shadow-green" onClick={() => setShowScanner(true)}>
             <CardContent className="p-6 text-center">
               <div className="w-12 h-12 primary-gradient rounded-2xl flex items-center justify-center mx-auto mb-4">
                 <QrCode className="h-6 w-6 text-white" />
@@ -229,7 +229,7 @@ export default function Home() {
           </Card>
 
           {/* Stats Card */}
-          <Card className="card-hover animate-slide-up" style={{ animationDelay: '0.2s' }}>
+          <Card className="card-hover animate-slide-up glass-light border-green-500/20 shadow-green" style={{ animationDelay: '0.2s' }}>
             <CardContent className="p-6 text-center">
               <div className="w-12 h-12 bg-gradient-to-br from-green-500 to-green-600 rounded-2xl flex items-center justify-center mx-auto mb-4">
                 <TrendingUp className="h-6 w-6 text-white" />
@@ -243,7 +243,7 @@ export default function Home() {
           </Card>
 
           {/* Quick Checkout */}
-          <Card className="card-hover animate-slide-up" style={{ animationDelay: '0.4s' }}>
+          <Card className="card-hover animate-slide-up glass-light border-green-500/20 shadow-green" style={{ animationDelay: '0.4s' }}>
             <CardContent className="p-6 text-center">
               <div className="w-12 h-12 bg-gradient-to-br from-purple-500 to-purple-600 rounded-2xl flex items-center justify-center mx-auto mb-4">
                 <Sparkles className="h-6 w-6 text-white" />
@@ -265,7 +265,7 @@ export default function Home() {
         </div>
 
         {/* Cart Section */}
-        <Card className="animate-fade-in shadow-xl border-0 bg-white/80 backdrop-blur-sm">
+        <Card className="animate-fade-in shadow-xl border-0 glass-light border-green-500/20 shadow-green">
           <CardContent className="p-8">
             <div className="flex items-center justify-between mb-6">
               <div className="flex items-center space-x-3">
@@ -285,7 +285,7 @@ export default function Home() {
                   variant="outline"
                   size="sm"
                   onClick={() => setShowScanner(true)}
-                  className="hover:bg-blue-50 border-blue-200"
+                  className="hover:bg-green-50 border-green-200"
                 >
                   <Plus className="h-4 w-4 mr-2" />
                   Add More

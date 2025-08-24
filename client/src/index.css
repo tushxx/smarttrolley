@@ -11,46 +11,49 @@
   --card-foreground: hsl(210 25% 7.8431%);
   --popover: hsl(0 0% 100%);
   --popover-foreground: hsl(210 25% 7.8431%);
-  --primary: linear-gradient(135deg, hsl(204.7059 100% 40%) 0%, hsl(224 100% 50%) 100%);
-  --primary-solid: hsl(204.7059 100% 40%);
+  --primary: linear-gradient(135deg, hsl(140 70% 35%) 0%, hsl(160 80% 25%) 100%);
+  --primary-solid: hsl(140 70% 35%);
   --primary-foreground: hsl(0 0% 100%);
   --secondary: hsl(210 25% 7.8431%);
   --secondary-foreground: hsl(0 0% 100%);
   --muted: hsl(240 1.9608% 96%);
   --muted-foreground: hsl(210 25% 7.8431%);
-  --accent: hsl(158.1818 60.3960% 36.0784%);
+  --accent: hsl(140 70% 45%);
   --accent-foreground: hsl(0 0% 100%);
   --destructive: hsl(0 84.2105% 60.3922%);
   --destructive-foreground: hsl(0 0% 100%);
   --border: hsl(214.3 31.8% 91.4%);
   --input: hsl(214.3 31.8% 97.4%);
-  --ring: hsl(202.8169 89.1213% 53.1373%);
-  --chart-1: hsl(203.8863 88.2845% 53.1373%);
+  --ring: hsl(140 70% 45%);
+  --chart-1: hsl(140 70% 45%);
   --chart-2: hsl(159.7826 100% 36.0784%);
   --chart-3: hsl(42.0290 92.8251% 56.2745%);
   --chart-4: hsl(147.1429 78.5047% 41.9608%);
   --chart-5: hsl(341.4894 75.2000% 50.9804%);
   --sidebar: hsl(0 0% 98%);
   --sidebar-foreground: hsl(210 25% 7.8431%);
-  --sidebar-primary: hsl(203.8863 88.2845% 53.1373%);
+  --sidebar-primary: hsl(140 70% 45%);
   --sidebar-primary-foreground: hsl(0 0% 100%);
-  --sidebar-accent: hsl(211.5789 51.3514% 92.7451%);
-  --sidebar-accent-foreground: hsl(203.8863 88.2845% 53.1373%);
+  --sidebar-accent: hsl(140 30% 92%);
+  --sidebar-accent-foreground: hsl(140 70% 45%);
   --sidebar-border: hsl(205.0000 25.0000% 90.5882%);
-  --sidebar-ring: hsl(202.8169 89.1213% 53.1373%);
+  --sidebar-ring: hsl(140 70% 45%);
   --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue', sans-serif;
   --font-serif: Georgia, serif;
   --font-mono: 'Fira Code', 'SF Mono', Monaco, Inconsolata, 'Roboto Mono', 'Source Code Pro', monospace;
   --radius: 0.75rem;
-  --success: hsl(158.1818 60.3960% 36.0784%);
+  --success: hsl(140 70% 45%);
   --danger: hsl(0 84.2105% 60.3922%);
   --neutral: hsl(220 8.9552% 46.0784%);
-  --gradient-bg: linear-gradient(135deg, hsl(214 100% 97%) 0%, hsl(204 100% 95%) 25%, hsl(194 100% 95%) 50%, hsl(204 100% 97%) 100%);
+  --gradient-bg: linear-gradient(135deg, hsl(0 0% 8%) 0%, hsl(140 20% 12%) 25%, hsl(160 15% 10%) 50%, hsl(0 0% 5%) 100%);
+  --glass-bg: rgba(255, 255, 255, 0.1);
+  --glass-border: rgba(255, 255, 255, 0.2);
   --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
   --shadow: 0 1px 3px 0 rgb(0 0 0 / 0.1), 0 1px 2px -1px rgb(0 0 0 / 0.1);
   --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
   --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
   --shadow-xl: 0 20px 25px -5px rgb(0 0 0 / 0.1), 0 8px 10px -6px rgb(0 0 0 / 0.1);
+  --shadow-green: 0 0 20px rgba(34, 197, 94, 0.3);
 }
 
 .dark {
@@ -139,9 +142,17 @@
   }
   
   .glass-effect {
-    backdrop-filter: blur(10px);
-    background: rgba(255, 255, 255, 0.8);
-    border: 1px solid rgba(255, 255, 255, 0.2);
+    backdrop-filter: blur(15px);
+    background: rgba(255, 255, 255, 0.95);
+    border: 1px solid rgba(34, 197, 94, 0.2);
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+  }
+  
+  .glass-dark-effect {
+    backdrop-filter: blur(15px);
+    background: rgba(0, 0, 0, 0.8);
+    border: 1px solid rgba(34, 197, 94, 0.3);
+    box-shadow: 0 8px 32px rgba(34, 197, 94, 0.1);
   }
   
   .card-hover {
@@ -200,9 +211,27 @@
 }
 
 .primary-gradient {
-  background: linear-gradient(135deg, #0084ff 0%, #0066cc 100%);
+  background: linear-gradient(135deg, #22c55e 0%, #16a34a 100%);
+  box-shadow: 0 0 20px rgba(34, 197, 94, 0.3);
 }
 
 .primary-gradient:hover {
-  background: linear-gradient(135deg, #0066cc 0%, #0052a3 100%);
+  background: linear-gradient(135deg, #16a34a 0%, #15803d 100%);
+  box-shadow: 0 0 25px rgba(34, 197, 94, 0.4);
+}
+
+.glass-dark {
+  background: rgba(0, 0, 0, 0.7);
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.glass-light {
+  background: rgba(255, 255, 255, 0.9);
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+}
+
+.gradient-dark-bg {
+  background: linear-gradient(135deg, #0f0f0f 0%, #1a2e1a 25%, #0d2818 50%, #000000 100%);
 }

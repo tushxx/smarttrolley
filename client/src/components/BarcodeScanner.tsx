@@ -34,6 +34,7 @@ export default function BarcodeScanner({ onScan, onError }: BarcodeScannerProps)
 
       if (videoRef.current) {
         videoRef.current.srcObject = mediaStream;
+        await videoRef.current.play(); // Ensure video starts playing
         setStream(mediaStream);
         setIsScanning(true);
       }
@@ -46,11 +47,17 @@ export default function BarcodeScanner({ onScan, onError }: BarcodeScannerProps)
 
   const stopCamera = () => {
     if (stream) {
-      stream.getTracks().forEach(track => track.stop());
+      stream.getTracks().forEach(track => {
+        track.stop();
+      });
       setStream(null);
+    }
+    if (videoRef.current) {
+      videoRef.current.srcObject = null;
     }
     setIsScanning(false);
     setScanResult(null);
+    setCameraError(null);
   };
 
   // Sample products for demonstration
@@ -76,7 +83,7 @@ export default function BarcodeScanner({ onScan, onError }: BarcodeScannerProps)
       {/* Camera Section */}
       <Card>
         <CardContent className="p-6">
-          <div className="bg-gray-900 rounded-lg p-4 relative overflow-hidden min-h-[300px] flex items-center justify-center">
+          <div className="bg-gradient-to-br from-gray-900 via-gray-800 to-black rounded-2xl p-4 relative overflow-hidden min-h-[300px] flex items-center justify-center border border-green-500/20 shadow-2xl">
             {cameraError ? (
               <div className="text-center text-white">
                 <Camera className="mx-auto h-12 w-12 text-gray-400 mb-4" />
@@ -102,7 +109,13 @@ export default function BarcodeScanner({ onScan, onError }: BarcodeScannerProps)
                   autoPlay
                   playsInline
                   muted
-                  className="w-full max-w-sm mx-auto rounded-lg"
+                  className="w-full h-full max-w-sm mx-auto rounded-lg object-cover"
+                  style={{ minHeight: '250px', maxHeight: '300px' }}
+                  onLoadedMetadata={() => {
+                    if (videoRef.current) {
+                      videoRef.current.play().catch(console.error);
+                    }
+                  }}
                   data-testid="video-camera"
                 />
                 
