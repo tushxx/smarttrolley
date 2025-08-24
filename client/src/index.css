@@ -7,29 +7,30 @@
 :root {
   --background: hsl(0 0% 100%);
   --foreground: hsl(210 25% 7.8431%);
-  --card: hsl(180 6.6667% 97.0588%);
+  --card: hsl(0 0% 100%);
   --card-foreground: hsl(210 25% 7.8431%);
   --popover: hsl(0 0% 100%);
   --popover-foreground: hsl(210 25% 7.8431%);
-  --primary: hsl(204.7059 100% 40%);
+  --primary: linear-gradient(135deg, hsl(204.7059 100% 40%) 0%, hsl(224 100% 50%) 100%);
+  --primary-solid: hsl(204.7059 100% 40%);
   --primary-foreground: hsl(0 0% 100%);
   --secondary: hsl(210 25% 7.8431%);
   --secondary-foreground: hsl(0 0% 100%);
-  --muted: hsl(240 1.9608% 90%);
+  --muted: hsl(240 1.9608% 96%);
   --muted-foreground: hsl(210 25% 7.8431%);
   --accent: hsl(158.1818 60.3960% 36.0784%);
   --accent-foreground: hsl(0 0% 100%);
   --destructive: hsl(0 84.2105% 60.3922%);
   --destructive-foreground: hsl(0 0% 100%);
-  --border: hsl(201.4286 30.4348% 90.9804%);
-  --input: hsl(200 23.0769% 97.4510%);
+  --border: hsl(214.3 31.8% 91.4%);
+  --input: hsl(214.3 31.8% 97.4%);
   --ring: hsl(202.8169 89.1213% 53.1373%);
   --chart-1: hsl(203.8863 88.2845% 53.1373%);
   --chart-2: hsl(159.7826 100% 36.0784%);
   --chart-3: hsl(42.0290 92.8251% 56.2745%);
   --chart-4: hsl(147.1429 78.5047% 41.9608%);
   --chart-5: hsl(341.4894 75.2000% 50.9804%);
-  --sidebar: hsl(180 6.6667% 97.0588%);
+  --sidebar: hsl(0 0% 98%);
   --sidebar-foreground: hsl(210 25% 7.8431%);
   --sidebar-primary: hsl(203.8863 88.2845% 53.1373%);
   --sidebar-primary-foreground: hsl(0 0% 100%);
@@ -40,10 +41,16 @@
   --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue', sans-serif;
   --font-serif: Georgia, serif;
   --font-mono: 'Fira Code', 'SF Mono', Monaco, Inconsolata, 'Roboto Mono', 'Source Code Pro', monospace;
-  --radius: 0.5rem;
+  --radius: 0.75rem;
   --success: hsl(158.1818 60.3960% 36.0784%);
   --danger: hsl(0 84.2105% 60.3922%);
   --neutral: hsl(220 8.9552% 46.0784%);
+  --gradient-bg: linear-gradient(135deg, hsl(214 100% 97%) 0%, hsl(204 100% 95%) 25%, hsl(194 100% 95%) 50%, hsl(204 100% 97%) 100%);
+  --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+  --shadow: 0 1px 3px 0 rgb(0 0 0 / 0.1), 0 1px 2px -1px rgb(0 0 0 / 0.1);
+  --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+  --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
+  --shadow-xl: 0 20px 25px -5px rgb(0 0 0 / 0.1), 0 8px 10px -6px rgb(0 0 0 / 0.1);
 }
 
 .dark {
@@ -123,11 +130,79 @@
     border-color: hsl(var(--success));
   }
   
-  .border-danger {
-    border-color: hsl(var(--danger));
+  .gradient-primary {
+    background: var(--primary);
   }
   
-  .border-neutral {
-    border-color: hsl(var(--neutral));
+  .gradient-bg {
+    background: var(--gradient-bg);
   }
+  
+  .glass-effect {
+    backdrop-filter: blur(10px);
+    background: rgba(255, 255, 255, 0.8);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+  }
+  
+  .card-hover {
+    transition: all 0.3s ease;
+    box-shadow: var(--shadow);
+  }
+  
+  .card-hover:hover {
+    transform: translateY(-4px);
+    box-shadow: var(--shadow-lg);
+  }
+  
+  .animate-fade-in {
+    animation: fade-in 0.5s ease-in-out;
+  }
+  
+  .animate-slide-up {
+    animation: slide-up 0.6s ease-out;
+  }
+  
+  .animate-bounce-gentle {
+    animation: bounce-gentle 2s infinite;
+  }
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes slide-up {
+  from {
+    opacity: 0;
+    transform: translateY(30px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes bounce-gentle {
+  0%, 20%, 50%, 80%, 100% {
+    transform: translateY(0);
+  }
+  40% {
+    transform: translateY(-4px);
+  }
+  60% {
+    transform: translateY(-2px);
+  }
+}
+
+.primary-gradient {
+  background: linear-gradient(135deg, #0084ff 0%, #0066cc 100%);
+}
+
+.primary-gradient:hover {
+  background: linear-gradient(135deg, #0066cc 0%, #0052a3 100%);
 }

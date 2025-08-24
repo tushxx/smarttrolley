@@ -9,7 +9,7 @@ import { useAuth } from "@/hooks/useAuth";
 import BarcodeScanner from "@/components/BarcodeScanner";
 import CartItem from "@/components/CartItem";
 import CartSummary from "@/components/CartSummary";
-import { ShoppingCart, User, QrCode } from "lucide-react";
+import { ShoppingCart, User, QrCode, LogOut, Plus, Sparkles, TrendingUp } from "lucide-react";
 import { useLocation } from "wouter";
 import type { CartWithItems } from "@shared/schema";
 
@@ -38,15 +38,16 @@ export default function Home() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/cart"] });
       toast({
-        title: "Item Added",
-        description: "Product successfully added to your cart!",
+        title: "✨ Item Added!",
+        description: "Product successfully added to your cart",
+        className: "bg-green-50 border-green-200",
       });
     },
     onError: (error) => {
       if (isUnauthorizedError(error)) {
         toast({
-          title: "Unauthorized",
-          description: "You are logged out. Logging in again...",
+          title: "Session Expired",
+          description: "Please log in again to continue shopping",
           variant: "destructive",
         });
         setTimeout(() => {
@@ -55,8 +56,8 @@ export default function Home() {
         return;
       }
       toast({
-        title: "Error",
-        description: "Failed to add item to cart",
+        title: "Oops! Something went wrong",
+        description: "Failed to add item to cart. Please try again.",
         variant: "destructive",
       });
     },
@@ -99,153 +100,256 @@ export default function Home() {
 
   if (cartLoading) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="animate-spin w-8 h-8 border-4 border-primary border-t-transparent rounded-full" />
+      <div className="min-h-screen gradient-bg flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin w-12 h-12 border-4 border-blue-600 border-t-transparent rounded-full mx-auto mb-4" />
+          <p className="text-gray-600 font-medium">Loading your smart cart...</p>
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      {/* Header */}
-      <header className="bg-white shadow-sm border-b border-gray-200 sticky top-0 z-40">
+    <div className="min-h-screen gradient-bg">
+      {/* Modern Header */}
+      <header className="sticky top-0 z-50 glass-effect border-b border-white/20">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center h-16">
+            {/* Logo */}
             <div className="flex items-center">
-              <div className="h-8 w-8 bg-primary rounded-full flex items-center justify-center">
-                <ShoppingCart className="text-white h-4 w-4" />
+              <div className="h-10 w-10 primary-gradient rounded-2xl flex items-center justify-center shadow-lg">
+                <ShoppingCart className="text-white h-5 w-5" />
               </div>
-              <h1 className="ml-3 text-xl font-semibold text-gray-900">SmartCart</h1>
+              <div className="ml-3">
+                <h1 className="text-xl font-bold bg-gradient-to-r from-gray-900 to-gray-700 bg-clip-text text-transparent">
+                  SmartCart
+                </h1>
+                <p className="text-xs text-gray-500">Smart Shopping</p>
+              </div>
             </div>
             
-            <div className="flex items-center space-x-4">
-              {/* Cart Summary */}
-              <div className="flex items-center space-x-2 bg-gray-100 rounded-full px-3 py-1">
-                <ShoppingCart className="h-4 w-4 text-primary" />
-                <span className="text-sm font-medium" data-testid="text-cart-count">
-                  {cart?.items.length || 0} items
-                </span>
-                <span className="text-sm font-bold text-primary" data-testid="text-cart-total">
-                  ${cart?.items.reduce((total, item) => total + (parseFloat(item.product.price) * item.quantity), 0).toFixed(2) || "0.00"}
-                </span>
+            {/* Header Stats */}
+            <div className="flex items-center space-x-6">
+              {/* Cart Summary Badge */}
+              <div className="flex items-center space-x-3 bg-white/70 backdrop-blur-sm rounded-full px-4 py-2 border border-white/30">
+                <ShoppingCart className="h-4 w-4 text-blue-600" />
+                <div className="text-sm">
+                  <span className="font-semibold text-gray-900" data-testid="text-cart-count">
+                    {cart?.items?.length || 0}
+                  </span>
+                  <span className="text-gray-500 ml-1">items</span>
+                </div>
+                {cart?.items && cart.items.length > 0 && (
+                  <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
+                )}
               </div>
-              
+
               {/* User Menu */}
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={handleLogout}
-                className="p-2 rounded-full bg-gray-100 text-gray-600 hover:bg-gray-200"
-                data-testid="button-logout"
-              >
-                <User className="h-4 w-4" />
-              </Button>
+              <div className="flex items-center space-x-3">
+                <div className="text-right hidden sm:block">
+                  <p className="text-sm font-medium text-gray-900">
+                    {(user as any)?.firstName || user?.email?.split('@')[0] || 'User'}
+                  </p>
+                  <p className="text-xs text-gray-500">Welcome back!</p>
+                </div>
+                <Button
+                  onClick={handleLogout}
+                  variant="ghost"
+                  size="sm"
+                  className="text-gray-600 hover:text-gray-900 hover:bg-white/50"
+                  data-testid="button-logout"
+                >
+                  <LogOut className="h-4 w-4" />
+                </Button>
+              </div>
             </div>
           </div>
         </div>
       </header>
 
       {/* Main Content */}
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
-        
-        {/* Barcode Scanner Section */}
-        <Card className="mb-6">
-          <CardContent className="p-6">
-            <div className="text-center">
-              <div className="mx-auto w-24 h-24 bg-gradient-to-br from-primary to-blue-600 rounded-full flex items-center justify-center mb-4">
-                <QrCode className="text-white h-8 w-8" />
-              </div>
-              <h2 className="text-xl font-semibold text-gray-900 mb-2">Scan Product Barcode</h2>
-              <p className="text-gray-600 mb-6">Point your camera at the product barcode to add it to your cart</p>
-              
-              {showScanner ? (
-                <div className="mb-4">
-                  <BarcodeScanner
-                    onScan={handleBarcodeScanned}
-                    onError={(error) => {
-                      toast({
-                        title: "Scanner Error",
-                        description: error.message,
-                        variant: "destructive",
-                      });
-                    }}
-                  />
+      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        {/* Scanner Modal */}
+        {showScanner && (
+          <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+            <Card className="w-full max-w-lg animate-slide-up">
+              <CardContent className="p-6">
+                <div className="flex justify-between items-center mb-4">
+                  <h2 className="text-xl font-semibold">Barcode Scanner</h2>
                   <Button
+                    variant="ghost"
+                    size="sm"
                     onClick={() => setShowScanner(false)}
-                    variant="outline"
-                    className="mt-4"
-                    data-testid="button-stop-scanner"
+                    className="text-gray-500"
                   >
-                    Stop Scanning
+                    ✕
                   </Button>
                 </div>
-              ) : (
+                <BarcodeScanner
+                  onScan={handleBarcodeScanned}
+                  onError={(error) => {
+                    toast({
+                      title: "Scanner Error",
+                      description: error.message,
+                      variant: "destructive",
+                    });
+                  }}
+                />
+              </CardContent>
+            </Card>
+          </div>
+        )}
+
+        {/* Welcome Section */}
+        <div className="mb-8 text-center animate-fade-in">
+          <h2 className="text-3xl font-bold text-gray-900 mb-2">
+            Welcome to Your Smart Cart
+          </h2>
+          <p className="text-gray-600 max-w-2xl mx-auto">
+            Scan barcodes to add items instantly, manage your cart effortlessly, and checkout securely with Razorpay
+          </p>
+        </div>
+
+        {/* Quick Actions */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+          {/* Scan to Add */}
+          <Card className="card-hover animate-slide-up cursor-pointer" onClick={() => setShowScanner(true)}>
+            <CardContent className="p-6 text-center">
+              <div className="w-12 h-12 primary-gradient rounded-2xl flex items-center justify-center mx-auto mb-4">
+                <QrCode className="h-6 w-6 text-white" />
+              </div>
+              <h3 className="font-semibold text-gray-900 mb-2">Scan Barcode</h3>
+              <p className="text-sm text-gray-600">
+                Use your camera to scan product barcodes
+              </p>
+              <Button className="mt-4 primary-gradient" size="sm">
+                Start Scanning
+              </Button>
+            </CardContent>
+          </Card>
+
+          {/* Stats Card */}
+          <Card className="card-hover animate-slide-up" style={{ animationDelay: '0.2s' }}>
+            <CardContent className="p-6 text-center">
+              <div className="w-12 h-12 bg-gradient-to-br from-green-500 to-green-600 rounded-2xl flex items-center justify-center mx-auto mb-4">
+                <TrendingUp className="h-6 w-6 text-white" />
+              </div>
+              <h3 className="font-semibold text-gray-900 mb-2">Cart Value</h3>
+              <p className="text-sm text-gray-600 mb-2">Current total amount</p>
+              <p className="text-2xl font-bold text-green-600">
+                ₹{cart?.items.reduce((sum, item) => sum + (parseFloat(item.product.price) * item.quantity), 0).toFixed(2) || '0.00'}
+              </p>
+            </CardContent>
+          </Card>
+
+          {/* Quick Checkout */}
+          <Card className="card-hover animate-slide-up" style={{ animationDelay: '0.4s' }}>
+            <CardContent className="p-6 text-center">
+              <div className="w-12 h-12 bg-gradient-to-br from-purple-500 to-purple-600 rounded-2xl flex items-center justify-center mx-auto mb-4">
+                <Sparkles className="h-6 w-6 text-white" />
+              </div>
+              <h3 className="font-semibold text-gray-900 mb-2">Quick Checkout</h3>
+              <p className="text-sm text-gray-600 mb-2">
+                {cart?.items.length || 0} items ready
+              </p>
+              <Button
+                onClick={proceedToCheckout}
+                disabled={!cart?.items.length}
+                className="primary-gradient"
+                size="sm"
+              >
+                Checkout Now
+              </Button>
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* Cart Section */}
+        <Card className="animate-fade-in shadow-xl border-0 bg-white/80 backdrop-blur-sm">
+          <CardContent className="p-8">
+            <div className="flex items-center justify-between mb-6">
+              <div className="flex items-center space-x-3">
+                <div className="w-8 h-8 primary-gradient rounded-lg flex items-center justify-center">
+                  <ShoppingCart className="h-4 w-4 text-white" />
+                </div>
+                <div>
+                  <h3 className="text-xl font-semibold text-gray-900">Your Cart</h3>
+                  <p className="text-sm text-gray-500">
+                    {cart?.items.length || 0} items • Updated just now
+                  </p>
+                </div>
+              </div>
+              
+              {cart?.items.length > 0 && (
                 <Button
+                  variant="outline"
+                  size="sm"
                   onClick={() => setShowScanner(true)}
-                  className="bg-accent text-white hover:bg-green-600"
-                  data-testid="button-start-scanner"
+                  className="hover:bg-blue-50 border-blue-200"
                 >
-                  <QrCode className="mr-2 h-4 w-4" />
-                  Start Scanning
+                  <Plus className="h-4 w-4 mr-2" />
+                  Add More
                 </Button>
               )}
             </div>
-          </CardContent>
-        </Card>
 
-        {/* Shopping Cart */}
-        <Card>
-          <div className="p-6 border-b border-gray-200">
-            <div className="flex items-center justify-between">
-              <h3 className="text-lg font-semibold text-gray-900">Your Cart</h3>
-              <span className="text-sm text-gray-500" data-testid="text-cart-items">
-                {cart?.items.length || 0} items
-              </span>
+            {/* Cart Items */}
+            <div className="space-y-4">
+              {!cart?.items || cart.items.length === 0 ? (
+                <div className="text-center py-12">
+                  <div className="w-20 h-20 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                    <ShoppingCart className="h-8 w-8 text-gray-400" />
+                  </div>
+                  <h4 className="text-lg font-medium text-gray-900 mb-2">
+                    Your cart is empty
+                  </h4>
+                  <p className="text-gray-500 mb-6">
+                    Scan your first barcode to get started with smart shopping
+                  </p>
+                  <Button
+                    onClick={() => setShowScanner(true)}
+                    className="primary-gradient"
+                    data-testid="button-start-scanning"
+                  >
+                    <QrCode className="mr-2 h-4 w-4" />
+                    Start Scanning
+                  </Button>
+                </div>
+              ) : (
+                cart?.items?.map((item, index) => (
+                  <div key={item.id} className="animate-slide-up" style={{ animationDelay: `${index * 0.1}s` }}>
+                    <CartItem 
+                      item={item} 
+                      onQuantityChange={(itemId, newQuantity) => {
+                        // This will be handled by CartItem's internal mutations
+                      }}
+                      onRemove={(itemId) => {
+                        // This will be handled by CartItem's internal mutations
+                      }}
+                    />
+                  </div>
+                ))
+              )}
             </div>
-          </div>
 
-          {/* Cart Items */}
-          <div className="divide-y divide-gray-200">
-            {cart?.items.length === 0 ? (
-              <div className="p-6 text-center text-gray-500">
-                <ShoppingCart className="mx-auto h-12 w-12 text-gray-300 mb-4" />
-                <p>Your cart is empty</p>
-                <p className="text-sm">Scan a product to get started!</p>
+            {/* Cart Summary */}
+            {cart && cart.items.length > 0 && (
+              <div className="animate-slide-up" style={{ animationDelay: '0.6s' }}>
+                <CartSummary cart={cart} onCheckout={proceedToCheckout} />
               </div>
-            ) : (
-              cart?.items.map((item) => (
-                <CartItem
-                  key={item.id}
-                  item={item}
-                  onQuantityChange={(quantity) => {
-                    // Handle quantity update
-                    queryClient.invalidateQueries({ queryKey: ["/api/cart"] });
-                  }}
-                  onRemove={() => {
-                    queryClient.invalidateQueries({ queryKey: ["/api/cart"] });
-                  }}
-                />
-              ))
             )}
-          </div>
-
-          {/* Cart Summary */}
-          {cart && cart.items.length > 0 && (
-            <CartSummary cart={cart} onCheckout={proceedToCheckout} />
-          )}
+          </CardContent>
         </Card>
       </main>
 
       {/* Floating Action Button for Scanner */}
-      <div className="fixed bottom-6 right-6 z-50">
-        <Button
-          onClick={() => setShowScanner(!showScanner)}
-          className="w-16 h-16 bg-accent text-white rounded-full shadow-lg hover:bg-green-600"
-          data-testid="button-fab-scanner"
-        >
-          <QrCode className="h-6 w-6" />
-        </Button>
-      </div>
+      <Button
+        onClick={() => setShowScanner(true)}
+        className="fixed bottom-6 right-6 w-14 h-14 rounded-full primary-gradient shadow-2xl hover:shadow-xl transition-all duration-300 animate-bounce-gentle z-40"
+        data-testid="button-floating-scanner"
+      >
+        <QrCode className="h-6 w-6 text-white" />
+      </Button>
     </div>
   );
 }
