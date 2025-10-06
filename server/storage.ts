@@ -43,6 +43,19 @@ export interface IStorage {
   createOrder(userId: string, cartId: string, orderData: InsertOrder): Promise<Order>;
   updateOrderStatus(orderId: string, status: string, razorpayOrderId?: string, razorpayPaymentId?: string): Promise<Order>;
   getUserOrders(userId: string): Promise<Order[]>;
+
+  // IoT Cart Session operations
+  createCartSession(sessionId: string, cartId: string, userId: string): Promise<any>;
+  getCartSession(sessionId: string): Promise<any>;
+  endCartSession(sessionId: string): Promise<any>;
+  
+  // Temporary session operations
+  createTempSession(sessionId: string, userId: string, expirySeconds: number): Promise<any>;
+  getTempSession(sessionId: string): Promise<any>;
+  deleteTempSession(sessionId: string): Promise<any>;
+  
+  // Fraud logging
+  logFraudAttempt(sessionId: string, fraudType: string, confidence: number): Promise<any>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -208,6 +221,50 @@ export class DatabaseStorage implements IStorage {
       .from(orders)
       .where(eq(orders.userId, userId))
       .orderBy(desc(orders.createdAt));
+  }
+
+  // IoT Cart Session operations (simplified for basic integration)
+  async createCartSession(sessionId: string, cartId: string, userId: string): Promise<any> {
+    // For basic integration, we'll store this in memory or simple logging
+    console.log(`🔗 Creating cart session: ${sessionId} for user ${userId} on cart ${cartId}`);
+    return { sessionId, cartId, userId, createdAt: new Date() };
+  }
+
+  async getCartSession(sessionId: string): Promise<any> {
+    // For basic integration, return mock session data
+    console.log(`📋 Getting cart session: ${sessionId}`);
+    // In a real implementation, you'd query a sessions table
+    return { sessionId, cartId: 'cart_001', userId: 'user_001', createdAt: new Date() };
+  }
+
+  async endCartSession(sessionId: string): Promise<any> {
+    console.log(`🏁 Ending cart session: ${sessionId}`);
+    return { success: true };
+  }
+
+  // Temporary session operations for QR codes
+  async createTempSession(sessionId: string, userId: string, expirySeconds: number): Promise<any> {
+    // Store temporary session for QR code validation
+    console.log(`⏱️ Creating temp session ${sessionId} for user ${userId} (expires in ${expirySeconds}s)`);
+    return { sessionId, userId, createdAt: new Date(), expirySeconds };
+  }
+
+  async getTempSession(sessionId: string): Promise<any> {
+    // For basic integration, simulate session lookup
+    console.log(`🔍 Getting temp session: ${sessionId}`);
+    return { sessionId, userId: 'user_001', createdAt: new Date() };
+  }
+
+  async deleteTempSession(sessionId: string): Promise<any> {
+    console.log(`🗑️ Deleting temp session: ${sessionId}`);
+    return { success: true };
+  }
+
+  // Fraud logging
+  async logFraudAttempt(sessionId: string, fraudType: string, confidence: number): Promise<any> {
+    console.warn(`🚨 FRAUD ALERT - Session ${sessionId}: ${fraudType} (${confidence}% confidence)`);
+    // In a real implementation, you'd store this in a fraud_logs table
+    return { logged: true, timestamp: new Date() };
   }
 }
 

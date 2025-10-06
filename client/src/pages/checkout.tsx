@@ -63,20 +63,54 @@ const CheckoutForm = ({ cart }: { cart: CartWithItems }) => {
   });
 
   const initiateRazorpayPayment = (orderData: any) => {
-    setIsProcessing(true);
-    
-    // Simulate payment processing delay
-    setTimeout(() => {
+    const options = {
+      key: orderData.key,
+      amount: orderData.amount,
+      currency: orderData.currency,
+      name: "SmartCart",
+      description: "Smart Shopping Experience",
+      order_id: orderData.razorpayOrderId,
+      handler: function (response: any) {
+        // Payment successful - verify on backend
+        verifyPaymentMutation.mutate({
+          orderId: orderData.orderId,
+          paymentId: response.razorpay_payment_id,
+          razorpayOrderId: response.razorpay_order_id,
+          signature: response.razorpay_signature,
+        });
+      },
+      prefill: {
+        name: "User",
+        email: "user@example.com",
+      },
+      theme: {
+        color: "#22c55e",
+      },
+      modal: {
+        ondismiss: function() {
+          setIsProcessing(false);
+          toast({
+            title: "Payment Cancelled",
+            description: "You cancelled the payment process.",
+            variant: "destructive",
+          });
+        }
+      }
+    };
+
+    // @ts-ignore - Razorpay is loaded via script
+    const rzp = new window.Razorpay(options);
+    rzp.on('payment.failed', function (response: any) {
       setIsProcessing(false);
-      
-      // Simulate successful payment
-      verifyPaymentMutation.mutate({
-        orderId: orderData.orderId,
-        paymentId: `pay_${Date.now()}`,
-        razorpayOrderId: orderData.razorpayOrderId,
-        signature: `sig_${Date.now()}`,
+      toast({
+        title: "Payment Failed",
+        description: response.error.description || "Payment could not be processed",
+        variant: "destructive",
       });
-    }, 3000);
+    });
+    
+    setIsProcessing(false);
+    rzp.open();
   };
 
   const handlePayment = async (e: React.FormEvent) => {

@@ -7,6 +7,7 @@ import { useAuth } from "@/hooks/useAuth";
 import Landing from "@/pages/landing";
 import Home from "@/pages/home";
 import Checkout from "@/pages/checkout";
+import IoTPage from "@/pages/iot";
 import NotFound from "@/pages/not-found";
 
 function Router() {
@@ -20,6 +21,7 @@ function Router() {
         <>
           <Route path="/" component={Home} />
           <Route path="/checkout" component={Checkout} />
+          <Route path="/iot" component={IoTPage} />
         </>
       )}
       <Route component={NotFound} />

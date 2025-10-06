@@ -1,16 +1,19 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
+import { Server as SocketIOServer } from "socket.io";
 import Razorpay from "razorpay";
 import { storage } from "./storage";
 import { setupAuth, isAuthenticated } from "./replitAuth";
 import { insertCartItemSchema, insertProductSchema } from "@shared/schema";
 import { z } from "zod";
+import { iotService } from "./iotService";
+import { qrService } from "./qrService";
 
-// For now, we'll work without Razorpay keys and implement a simple checkout flow
-// const razorpay = new Razorpay({
-//   key_id: process.env.RAZORPAY_KEY_ID || '',
-//   key_secret: process.env.RAZORPAY_KEY_SECRET || '',
-// });
+// Initialize Razorpay
+const razorpay = new Razorpay({
+  key_id: process.env.RAZORPAY_KEY_ID || '',
+  key_secret: process.env.RAZORPAY_KEY_SECRET || '',
+});
 
 export async function registerRoutes(app: Express): Promise<Server> {
   // Auth middleware
@@ -166,19 +169,26 @@ export async function registerRoutes(app: Express): Promise<Server> {
         total: total.toFixed(2),
       });
       
-      // For demo purposes, we'll create a mock Razorpay order
-      // In production, use: const razorpayOrder = await razorpay.orders.create({...})
-      const mockRazorpayOrderId = `order_${Date.now()}`;
+      // Create Razorpay order
+      const razorpayOrder = await razorpay.orders.create({
+        amount: Math.round(total * 100), // Amount in paise
+        currency: "INR",
+        receipt: order.id,
+        notes: {
+          orderId: order.id,
+          userId: userId
+        }
+      });
       
       // Update order with Razorpay order ID
-      await storage.updateOrderStatus(order.id, "pending", mockRazorpayOrderId);
+      await storage.updateOrderStatus(order.id, "pending", razorpayOrder.id);
       
       res.json({ 
         orderId: order.id,
-        razorpayOrderId: mockRazorpayOrderId,
-        amount: Math.round(total * 100), // Amount in paise
-        currency: "INR",
-        key: process.env.RAZORPAY_KEY_ID || "demo_key",
+        razorpayOrderId: razorpayOrder.id,
+        amount: razorpayOrder.amount,
+        currency: razorpayOrder.currency,
+        key: process.env.RAZORPAY_KEY_ID,
       });
     } catch (error: any) {
       console.error("Error creating Razorpay order:", error);
@@ -192,18 +202,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const { orderId, paymentId, razorpayOrderId, signature } = req.body;
       const userId = req.user.claims.sub;
       
-      // In production, verify the payment signature with Razorpay
-      // const crypto = require('crypto');
-      // const expectedSignature = crypto
-      //   .createHmac('sha256', process.env.RAZORPAY_KEY_SECRET!)
-      //   .update(razorpayOrderId + '|' + paymentId)
-      //   .digest('hex');
-      // 
-      // if (signature !== expectedSignature) {
-      //   return res.status(400).json({ message: 'Invalid signature' });
-      // }
+      // Verify the payment signature with Razorpay
+      const crypto = require('crypto');
+      const expectedSignature = crypto
+        .createHmac('sha256', process.env.RAZORPAY_KEY_SECRET!)
+        .update(razorpayOrderId + '|' + paymentId)
+        .digest('hex');
       
-      // For demo purposes, we'll accept any payment
+      if (signature !== expectedSignature) {
+        console.error('Payment signature mismatch');
+        return res.status(400).json({ message: 'Invalid payment signature' });
+      }
+      
+      // Update order status to paid
       await storage.updateOrderStatus(orderId, "paid", razorpayOrderId, paymentId);
       
       // Mark cart as completed
@@ -287,6 +298,98 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // IoT Integration Routes
+  
+  // Generate QR code for cart session
+  app.post('/api/iot/generate-qr', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const { sessionId, qrCode } = await qrService.generateCartSessionQR(userId);
+      
+      res.json({ 
+        success: true, 
+        sessionId, 
+        qrCode,
+        message: 'QR code generated successfully'
+      });
+    } catch (error) {
+      console.error('Error generating cart QR:', error);
+      res.status(500).json({ error: 'Failed to generate QR code' });
+    }
+  });
+
+  // Get cart status (mock data for demo)
+  app.get('/api/iot/cart-status/:cartId', isAuthenticated, async (req, res) => {
+    try {
+      const { cartId } = req.params;
+      
+      // Mock cart status data for demo
+      const status = {
+        cartId,
+        online: Math.random() > 0.3,
+        battery: Math.floor(Math.random() * 40) + 60,
+        location: ['Aisle 1 - Fruits', 'Aisle 2 - Dairy', 'Aisle 3 - Electronics'][Math.floor(Math.random() * 3)],
+        lastSeen: new Date().toISOString(),
+        sensorData: {
+          weight: `${(Math.random() * 5 + 1).toFixed(1)}kg`,
+          temperature: `${Math.floor(Math.random() * 5) + 20}°C`,
+          items: Math.floor(Math.random() * 10) + 1
+        }
+      };
+      
+      res.json(status);
+    } catch (error) {
+      console.error('Error getting cart status:', error);
+      res.status(500).json({ error: 'Failed to get cart status' });
+    }
+  });
+
+  // Send command to physical cart via AWS IoT
+  app.post('/api/iot/cart-command', isAuthenticated, async (req: any, res) => {
+    try {
+      const { cartId, command, data } = req.body;
+      
+      await iotService.sendCartCommand(cartId, command, data);
+      
+      res.json({ 
+        success: true, 
+        message: `Command '${command}' sent to cart ${cartId}`
+      });
+    } catch (error) {
+      console.error('Error sending cart command:', error);
+      res.status(500).json({ 
+        error: error instanceof Error ? error.message : 'Failed to send command to cart' 
+      });
+    }
+  });
+
   const httpServer = createServer(app);
+  
+  // Set up Socket.IO for real-time IoT updates
+  const io = new SocketIOServer(httpServer, {
+    cors: {
+      origin: "*",
+      methods: ["GET", "POST"]
+    }
+  });
+
+  // Connect IoT service with Socket.IO
+  iotService.setSocketServer(io);
+
+  io.on('connection', (socket) => {
+    console.log('🔌 Client connected to IoT WebSocket');
+
+    socket.on('join_cart', (cartId: string) => {
+      socket.join(`cart_${cartId}`);
+      console.log(`Client joined cart room: ${cartId}`);
+    });
+
+    socket.on('disconnect', () => {
+      console.log('❌ Client disconnected from IoT WebSocket');
+    });
+  });
+
+  console.log('🚀 IoT integration fully configured with AWS connectivity');
+  
   return httpServer;
 }

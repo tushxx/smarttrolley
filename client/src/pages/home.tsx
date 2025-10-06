@@ -9,7 +9,7 @@ import { useAuth } from "@/hooks/useAuth";
 import BarcodeScanner from "@/components/BarcodeScanner";
 import CartItem from "@/components/CartItem";
 import CartSummary from "@/components/CartSummary";
-import { ShoppingCart, User, QrCode, LogOut, Plus, Bell, Search, Menu, TrendingUp, Package, CreditCard } from "lucide-react";
+import { ShoppingCart, User, QrCode, LogOut, Plus, Bell, Search, Menu, TrendingUp, Package, CreditCard, Zap } from "lucide-react";
 import { useLocation } from "wouter";
 import type { CartWithItems } from "@shared/schema";
 
