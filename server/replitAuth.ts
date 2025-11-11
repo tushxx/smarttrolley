@@ -95,12 +95,13 @@ export async function setupAuth(app: Express) {
   
   for (const domain of domains) {
     const protocol = domain === "localhost" ? "http" : "https";
+    const port = domain === "localhost" ? ":5000" : "";
     const strategy = new Strategy(
       {
         name: `replitauth:${domain}`,
         config,
         scope: "openid email profile offline_access",
-        callbackURL: `${protocol}://${domain}:5000/api/callback`,
+        callbackURL: `${protocol}://${domain}${port}/api/callback`,
       },
       verify,
     );
