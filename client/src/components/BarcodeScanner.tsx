@@ -129,7 +129,7 @@ export default function BarcodeScanner({ onScan, onError }: BarcodeScannerProps)
   };
 
   const handleSuccessfulScan = (barcode: string) => {
-    // Prevent duplicate scans within 3 seconds
+    // Prevent duplicate scans within 10 seconds
     const now = Date.now();
     const timeSinceLastScan = now - lastScanTimeRef.current;
     
@@ -138,9 +138,9 @@ export default function BarcodeScanner({ onScan, onError }: BarcodeScannerProps)
       return;
     }
     
-    // If same barcode scanned within 3 seconds, ignore
-    if (lastScannedBarcodeRef.current === barcode && timeSinceLastScan < 3000) {
-      console.log('Duplicate scan ignored:', barcode);
+    // If ANY scan within 10 seconds, ignore
+    if (timeSinceLastScan < 10000) {
+      console.log('Scan ignored - please wait 10 seconds between scans');
       return;
     }
     
@@ -173,9 +173,11 @@ export default function BarcodeScanner({ onScan, onError }: BarcodeScannerProps)
     const now = Date.now();
     const timeSinceLastScan = now - lastScanTimeRef.current;
     
-    // Prevent duplicate scans within 3 seconds
-    if (lastScannedBarcodeRef.current === barcode && timeSinceLastScan < 3000) {
-      console.log('Test scan ignored - please wait 3 seconds between scans');
+    // Prevent ANY scans within 10 seconds
+    if (timeSinceLastScan < 10000) {
+      const secondsLeft = Math.ceil((10000 - timeSinceLastScan) / 1000);
+      console.log(`Please wait ${secondsLeft} more seconds before scanning again`);
+      setScanResult(`⏳ Please wait ${secondsLeft}s before next scan`);
       return;
     }
     
