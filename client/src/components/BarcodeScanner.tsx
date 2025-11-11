@@ -148,10 +148,20 @@ export default function BarcodeScanner({ onScan, onError }: BarcodeScannerProps)
     
     setScanResult(`✅ Scanned: ${barcode}`);
     
-    // Stop camera to prevent more scans
-    stopCamera().then(() => {
+    // CRITICAL: Stop camera SYNCHRONOUSLY before calling parent
+    if (html5QrCodeRef.current && isScanning) {
+      html5QrCodeRef.current.stop().then(() => {
+        setIsScanning(false);
+        // Only call parent callback AFTER camera is completely stopped
+        onScan(barcode);
+      }).catch((error) => {
+        console.error("Error stopping camera:", error);
+        setIsScanning(false);
+        onScan(barcode);
+      });
+    } else {
       onScan(barcode);
-    });
+    }
   };
 
   // Sample products for demonstration

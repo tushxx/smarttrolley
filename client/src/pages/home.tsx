@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -19,6 +19,7 @@ export default function Home() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const { user } = useAuth();
+  const processingBarcodeRef = useRef<string | null>(null);
 
   // Fetch cart data
   const { data: cart, isLoading: cartLoading } = useQuery<CartWithItems>({
@@ -82,11 +83,20 @@ export default function Home() {
 
   // Handle barcode scan
   const handleBarcodeScanned = async (barcode: string) => {
+    // Prevent duplicate processing of same barcode
+    if (processingBarcodeRef.current === barcode) {
+      console.log('Already processing this barcode, ignoring');
+      return;
+    }
+
     // Prevent duplicate scans while mutation is in progress
     if (addToCartMutation.isPending) {
       console.log('Scan ignored - already adding item to cart');
       return;
     }
+
+    // Mark this barcode as being processed
+    processingBarcodeRef.current = barcode;
 
     // CLOSE SCANNER IMMEDIATELY to stop camera
     setShowScanner(false);
@@ -96,9 +106,17 @@ export default function Home() {
       const product = await response.json();
       
       if (product) {
-        addToCartMutation.mutate(product.id);
+        addToCartMutation.mutate(product.id, {
+          onSettled: () => {
+            // Reset after 3 seconds so user can scan same item again if needed
+            setTimeout(() => {
+              processingBarcodeRef.current = null;
+            }, 3000);
+          }
+        });
       }
     } catch (error) {
+      processingBarcodeRef.current = null;
       toast({
         title: "Product Not Found",
         description: "This barcode is not in our database. Please try again.",
