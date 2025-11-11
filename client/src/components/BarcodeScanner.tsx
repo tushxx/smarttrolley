@@ -81,12 +81,16 @@ export default function BarcodeScanner({ onScan, onError }: BarcodeScannerProps)
       console.error("Camera start error:", error);
       let errorMessage = "Unable to start camera. ";
       
-      if (error.message.includes("permission") || error.message.includes("denied")) {
+      const errorMsg = error?.message || String(error) || "";
+      
+      if (errorMsg.includes("permission") || errorMsg.includes("denied") || errorMsg.includes("NotAllowedError")) {
         errorMessage = "Camera permission denied. Please:\n1. Allow camera access in browser settings\n2. Make sure you're using HTTPS\n3. Refresh the page and try again";
-      } else if (error.message.includes("NotFoundError") || error.message.includes("no camera")) {
+      } else if (errorMsg.includes("NotFoundError") || errorMsg.includes("no camera") || errorMsg.includes("OverconstrainedError")) {
         errorMessage = "No camera found. Please check if your device has a camera.";
+      } else if (errorMsg) {
+        errorMessage += errorMsg;
       } else {
-        errorMessage += error.message || "Please try again.";
+        errorMessage += "Please try again.";
       }
       
       setCameraError(errorMessage);
