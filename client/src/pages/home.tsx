@@ -33,6 +33,12 @@ export default function Home() {
         productId,
         quantity: 1,
       });
+      
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.message || 'Failed to add item');
+      }
+      
       return response.json();
     },
     onSuccess: () => {
@@ -43,7 +49,7 @@ export default function Home() {
         className: "bg-green-50 border-green-200",
       });
     },
-    onError: (error) => {
+    onError: (error: any) => {
       if (isUnauthorizedError(error)) {
         toast({
           title: "Session Expired",
@@ -55,9 +61,20 @@ export default function Home() {
         }, 500);
         return;
       }
+      
+      // Check if it's the "already in cart" error
+      if (error.message?.includes("already in cart")) {
+        toast({
+          title: "⚠️ Already in Cart",
+          description: "This product is already in your cart. Each barcode can only be added once.",
+          className: "bg-yellow-50 border-yellow-200",
+        });
+        return;
+      }
+      
       toast({
         title: "Oops! Something went wrong",
-        description: "Failed to add item to cart. Please try again.",
+        description: error.message || "Failed to add item to cart. Please try again.",
         variant: "destructive",
       });
     },
@@ -71,28 +88,15 @@ export default function Home() {
       return;
     }
 
+    // CLOSE SCANNER IMMEDIATELY to stop camera
+    setShowScanner(false);
+
     try {
       const response = await apiRequest("GET", `/api/products/barcode/${barcode}`);
       const product = await response.json();
       
       if (product) {
-        // CHECK IF PRODUCT ALREADY IN CART
-        const productAlreadyInCart = cart?.items?.some(
-          item => item.product.id === product.id
-        );
-
-        if (productAlreadyInCart) {
-          toast({
-            title: "⚠️ Already in Cart",
-            description: "This product is already in your cart. Each barcode can only be added once.",
-            className: "bg-yellow-50 border-yellow-200",
-          });
-          setShowScanner(false);
-          return;
-        }
-
         addToCartMutation.mutate(product.id);
-        setShowScanner(false);
       }
     } catch (error) {
       toast({

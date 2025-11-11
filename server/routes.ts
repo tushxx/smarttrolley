@@ -121,6 +121,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
         cart = await storage.getCartWithItems(newCart.id);
       }
       
+      // CHECK IF PRODUCT ALREADY IN CART - CRITICAL CONSTRAINT
+      const cartWithItems = await storage.getCartWithItems(cart!.id);
+      const productAlreadyInCart = cartWithItems?.items?.some(
+        item => item.productId === itemData.productId
+      );
+      
+      if (productAlreadyInCart) {
+        return res.status(400).json({ 
+          message: "Product already in cart. Each barcode can only be added once.",
+          code: "ALREADY_IN_CART"
+        });
+      }
+      
       const cartItem = await storage.addItemToCart(cart!.id, itemData);
       res.status(201).json(cartItem);
     } catch (error) {
