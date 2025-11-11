@@ -22,8 +22,27 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Auth routes
   app.get('/api/auth/user', isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.claims.sub;
-      const user = await storage.getUser(userId);
+      const claims = req.user.claims;
+      
+      // Try to get user from database, but fall back to session claims if database fails
+      let user;
+      try {
+        user = await storage.getUser(claims.sub);
+      } catch (dbError) {
+        console.warn("Database unavailable, using session data for user");
+        // Fallback to session claims if database is unavailable
+        user = {
+          id: claims.sub,
+          email: claims.email,
+          firstName: claims.first_name,
+          lastName: claims.last_name,
+          profileImageUrl: claims.profile_image_url,
+          razorpayCustomerId: null,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        };
+      }
+      
       res.json(user);
     } catch (error) {
       console.error("Error fetching user:", error);
