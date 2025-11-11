@@ -129,39 +129,53 @@ export default function BarcodeScanner({ onScan, onError }: BarcodeScannerProps)
   };
 
   const handleSuccessfulScan = (barcode: string) => {
-    const now = Date.now();
-    const timeSinceLastScan = now - lastScanTimeRef.current;
-    
-    // CRITICAL: Check barcode + timestamp FIRST before doing anything
-    // If same barcode within 5 seconds, ignore completely
-    if (lastScannedBarcodeRef.current === barcode && timeSinceLastScan < 5000) {
-      console.log(`⏭️ Ignoring duplicate scan of ${barcode} (${Math.floor(timeSinceLastScan / 1000)}s ago)`);
+    // If already processing, block ALL further callbacks immediately
+    if (isScanningRef.current) {
       return;
     }
     
-    // Different barcode OR more than 5 seconds passed - allow it
+    // Mark as processing FIRST to block all subsequent camera frames
+    isScanningRef.current = true;
+    
+    const now = Date.now();
+    const timeSinceLastScan = now - lastScanTimeRef.current;
+    
+    // Check if same barcode scanned recently
+    if (lastScannedBarcodeRef.current === barcode && timeSinceLastScan < 5000) {
+      console.log(`⏭️ Ignoring duplicate scan of ${barcode}`);
+      isScanningRef.current = false;
+      return;
+    }
+    
     console.log(`✅ Processing barcode: ${barcode}`);
     
-    // Update last scan info IMMEDIATELY
+    // Update last scan info
     lastScannedBarcodeRef.current = barcode;
     lastScanTimeRef.current = now;
     
     setScanResult(`✅ Scanned: ${barcode}`);
     
-    // CRITICAL: Stop camera SYNCHRONOUSLY before calling parent
-    if (html5QrCodeRef.current && isScanning) {
-      html5QrCodeRef.current.stop().then(() => {
+    // STOP CAMERA IMMEDIATELY - don't wait for async
+    if (html5QrCodeRef.current) {
+      try {
+        html5QrCodeRef.current.stop().then(() => {
+          setIsScanning(false);
+          console.log('Camera stopped successfully');
+        }).catch(() => {
+          setIsScanning(false);
+        });
+      } catch (e) {
         setIsScanning(false);
-        // Only call parent callback AFTER camera is completely stopped
-        onScan(barcode);
-      }).catch((error) => {
-        console.error("Error stopping camera:", error);
-        setIsScanning(false);
-        onScan(barcode);
-      });
-    } else {
-      onScan(barcode);
+      }
     }
+    
+    // Call parent callback immediately
+    onScan(barcode);
+    
+    // Reset processing flag after 3 seconds
+    setTimeout(() => {
+      isScanningRef.current = false;
+    }, 3000);
   };
 
   // Sample products for demonstration
