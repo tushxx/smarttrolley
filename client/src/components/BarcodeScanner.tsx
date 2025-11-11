@@ -26,9 +26,35 @@ export default function BarcodeScanner({ onScan, onError }: BarcodeScannerProps)
     try {
       setCameraError(null);
       
+      // First, check if we have permission
+      if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+        try {
+          // Request camera permission explicitly
+          const stream = await navigator.mediaDevices.getUserMedia({ 
+            video: { facingMode: "environment" } 
+          });
+          // Stop the test stream
+          stream.getTracks().forEach(track => track.stop());
+        } catch (permError: any) {
+          console.error("Camera permission error:", permError);
+          throw new Error("Camera permission denied. Please allow camera access in your browser settings and refresh the page.");
+        }
+      }
+      
       // Initialize Html5Qrcode if not already done
       if (!html5QrCodeRef.current) {
-        html5QrCodeRef.current = new Html5Qrcode(scannerDivId);
+        html5QrCodeRef.current = new Html5Qrcode(scannerDivId, {
+          verbose: false,
+          formatsToSupport: [
+            Html5QrcodeSupportedFormats.EAN_13,
+            Html5QrcodeSupportedFormats.EAN_8,
+            Html5QrcodeSupportedFormats.UPC_A,
+            Html5QrcodeSupportedFormats.UPC_E,
+            Html5QrcodeSupportedFormats.CODE_128,
+            Html5QrcodeSupportedFormats.CODE_39,
+            Html5QrcodeSupportedFormats.QR_CODE,
+          ]
+        });
       }
 
       // Start scanning
@@ -52,7 +78,17 @@ export default function BarcodeScanner({ onScan, onError }: BarcodeScannerProps)
 
       setIsScanning(true);
     } catch (error: any) {
-      const errorMessage = error.message || "Camera access denied. Please allow camera permission and try again.";
+      console.error("Camera start error:", error);
+      let errorMessage = "Unable to start camera. ";
+      
+      if (error.message.includes("permission") || error.message.includes("denied")) {
+        errorMessage = "Camera permission denied. Please:\n1. Allow camera access in browser settings\n2. Make sure you're using HTTPS\n3. Refresh the page and try again";
+      } else if (error.message.includes("NotFoundError") || error.message.includes("no camera")) {
+        errorMessage = "No camera found. Please check if your device has a camera.";
+      } else {
+        errorMessage += error.message || "Please try again.";
+      }
+      
       setCameraError(errorMessage);
       onError(new Error(errorMessage));
       setIsScanning(false);
@@ -109,12 +145,17 @@ export default function BarcodeScanner({ onScan, onError }: BarcodeScannerProps)
         <CardContent className="p-6">
           <div className="bg-gradient-to-br from-gray-900 via-gray-800 to-black rounded-2xl p-4 relative overflow-hidden min-h-[300px] flex items-center justify-center border border-green-500/20 shadow-2xl">
             {cameraError ? (
-              <div className="text-center text-white">
+              <div className="text-center text-white px-4">
                 <AlertCircle className="mx-auto h-12 w-12 text-red-400 mb-4" />
-                <p className="text-sm mb-4">{cameraError}</p>
-                <Button onClick={startCamera} size="sm">
-                  Try Again
-                </Button>
+                <p className="text-sm mb-4 whitespace-pre-line">{cameraError}</p>
+                <div className="space-y-2">
+                  <Button onClick={startCamera} size="sm" variant="outline" className="bg-white text-black hover:bg-gray-100">
+                    Try Again
+                  </Button>
+                  <p className="text-xs text-gray-400 mt-2">
+                    Or use the test barcodes below
+                  </p>
+                </div>
               </div>
             ) : !isScanning ? (
               <div className="text-center text-white">
