@@ -76,6 +76,21 @@ export default function Home() {
       const product = await response.json();
       
       if (product) {
+        // CHECK IF PRODUCT ALREADY IN CART
+        const productAlreadyInCart = cart?.items?.some(
+          item => item.product.id === product.id
+        );
+
+        if (productAlreadyInCart) {
+          toast({
+            title: "⚠️ Already in Cart",
+            description: "This product is already in your cart. Each barcode can only be added once.",
+            className: "bg-yellow-50 border-yellow-200",
+          });
+          setShowScanner(false);
+          return;
+        }
+
         addToCartMutation.mutate(product.id);
         setShowScanner(false);
       }
