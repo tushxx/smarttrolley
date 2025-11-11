@@ -129,35 +129,28 @@ export default function BarcodeScanner({ onScan, onError }: BarcodeScannerProps)
   };
 
   const handleSuccessfulScan = (barcode: string) => {
-    // Prevent duplicate scans within 10 seconds
-    const now = Date.now();
-    const timeSinceLastScan = now - lastScanTimeRef.current;
-    
-    // If already processing a scan, ignore
+    // If already processing a scan, ignore all further detections
     if (isScanningRef.current) {
+      console.log('Already processing a scan, ignoring detection');
       return;
     }
     
-    // If ANY scan within 10 seconds, ignore
-    if (timeSinceLastScan < 10000) {
-      console.log('Scan ignored - please wait 10 seconds between scans');
-      return;
-    }
-    
-    // Mark as processing to prevent duplicate callbacks
+    // Mark as processing IMMEDIATELY to block all subsequent camera frames
     isScanningRef.current = true;
-    lastScannedBarcodeRef.current = barcode;
-    lastScanTimeRef.current = now;
     
-    setScanResult(`Scanned: ${barcode}`);
+    console.log('✅ Barcode detected once:', barcode);
+    setScanResult(`✅ Scanned: ${barcode}`);
     
-    // Stop camera immediately and process the scan
+    // Stop camera IMMEDIATELY to prevent further scans
     stopCamera().then(() => {
+      // Process the scan
       onScan(barcode);
-      // Reset scanning flag after processing
+      
+      // Reset after 3 seconds so user can scan a different product
       setTimeout(() => {
         isScanningRef.current = false;
-      }, 2000);
+        lastScannedBarcodeRef.current = null;
+      }, 3000);
     });
   };
 
@@ -169,27 +162,26 @@ export default function BarcodeScanner({ onScan, onError }: BarcodeScannerProps)
   ];
 
   const simulateBarcodeScan = (barcode: string) => {
-    // Use same debouncing logic as real scans
-    const now = Date.now();
-    const timeSinceLastScan = now - lastScanTimeRef.current;
-    
-    // Prevent ANY scans within 10 seconds
-    if (timeSinceLastScan < 10000) {
-      const secondsLeft = Math.ceil((10000 - timeSinceLastScan) / 1000);
-      console.log(`Please wait ${secondsLeft} more seconds before scanning again`);
-      setScanResult(`⏳ Please wait ${secondsLeft}s before next scan`);
+    // Prevent rapid clicking - same logic as camera
+    if (isScanningRef.current) {
+      console.log('Already processing a scan, please wait');
       return;
     }
     
     const product = sampleProducts.find(p => p.barcode === barcode);
     if (product) {
-      lastScannedBarcodeRef.current = barcode;
-      lastScanTimeRef.current = now;
+      // Block further scans
+      isScanningRef.current = true;
       
-      setScanResult(`Found: ${product.name} - ${product.price}`);
+      setScanResult(`✅ Found: ${product.name} - ${product.price}`);
       setTimeout(() => {
         setIsScanning(false);
         onScan(barcode);
+        
+        // Allow next scan after 3 seconds
+        setTimeout(() => {
+          isScanningRef.current = false;
+        }, 3000);
       }, 1500);
     }
   };
