@@ -65,6 +65,12 @@ export default function Home() {
 
   // Handle barcode scan
   const handleBarcodeScanned = async (barcode: string) => {
+    // Prevent duplicate scans while mutation is in progress
+    if (addToCartMutation.isPending) {
+      console.log('Scan ignored - already adding item to cart');
+      return;
+    }
+
     try {
       const response = await apiRequest("GET", `/api/products/barcode/${barcode}`);
       const product = await response.json();
