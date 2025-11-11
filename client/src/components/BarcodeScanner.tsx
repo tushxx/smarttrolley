@@ -25,6 +25,10 @@ export default function BarcodeScanner({ onScan, onError }: BarcodeScannerProps)
   const startCamera = async () => {
     try {
       setCameraError(null);
+      setIsScanning(true); // Set this first so the div renders
+      
+      // Wait for the DOM element to be available
+      await new Promise(resolve => setTimeout(resolve, 100));
       
       // First, check if we have permission
       if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
@@ -39,6 +43,12 @@ export default function BarcodeScanner({ onScan, onError }: BarcodeScannerProps)
           console.error("Camera permission error:", permError);
           throw new Error("Camera permission denied. Please allow camera access in your browser settings and refresh the page.");
         }
+      }
+      
+      // Check if element exists
+      const element = document.getElementById(scannerDivId);
+      if (!element) {
+        throw new Error("Scanner element not ready. Please try again.");
       }
       
       // Initialize Html5Qrcode if not already done
@@ -76,7 +86,6 @@ export default function BarcodeScanner({ onScan, onError }: BarcodeScannerProps)
         }
       );
 
-      setIsScanning(true);
     } catch (error: any) {
       console.error("Camera start error:", error);
       let errorMessage = "Unable to start camera. ";
@@ -87,6 +96,8 @@ export default function BarcodeScanner({ onScan, onError }: BarcodeScannerProps)
         errorMessage = "Camera permission denied. Please:\n1. Allow camera access in browser settings\n2. Make sure you're using HTTPS\n3. Refresh the page and try again";
       } else if (errorMsg.includes("NotFoundError") || errorMsg.includes("no camera") || errorMsg.includes("OverconstrainedError")) {
         errorMessage = "No camera found. Please check if your device has a camera.";
+      } else if (errorMsg.includes("not found") || errorMsg.includes("not ready")) {
+        errorMessage = "Scanner not ready. Please wait a moment and try again.";
       } else if (errorMsg) {
         errorMessage += errorMsg;
       } else {
