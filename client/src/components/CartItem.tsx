@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { isUnauthorizedError } from "@/lib/authUtils";
+import { formatIndianPrice } from "@/lib/formatPrice";
 import { Minus, Plus, Trash2 } from "lucide-react";
 import type { CartItemWithProduct } from "@shared/schema";
 
@@ -162,11 +163,11 @@ export default function CartItem({ item, onQuantityChange, onRemove }: CartItemP
         {/* Price */}
         <div className="text-right">
           <p className="font-semibold text-gray-900" data-testid={`text-price-${item.id}`}>
-            ${(parseFloat(item.product.price) * item.quantity).toFixed(2)}
+            {formatIndianPrice(parseFloat(item.product.price) * item.quantity)}
           </p>
           {item.quantity > 1 && (
             <p className="text-xs text-gray-500">
-              ${item.product.price} each
+              {formatIndianPrice(item.product.price)} each
             </p>
           )}
         </div>

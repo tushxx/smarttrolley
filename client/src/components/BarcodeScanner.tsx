@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { Camera, CameraOff, Zap, CheckCircle } from "lucide-react";
+import { Camera, CameraOff, Zap, CheckCircle, AlertCircle } from "lucide-react";
+import { Html5Qrcode, Html5QrcodeSupportedFormats } from "html5-qrcode";
 
 interface BarcodeScannerProps {
   onScan: (barcode: string) => void;
@@ -9,11 +10,11 @@ interface BarcodeScannerProps {
 }
 
 export default function BarcodeScanner({ onScan, onError }: BarcodeScannerProps) {
-  const videoRef = useRef<HTMLVideoElement>(null);
   const [isScanning, setIsScanning] = useState(false);
-  const [stream, setStream] = useState<MediaStream | null>(null);
   const [scanResult, setScanResult] = useState<string | null>(null);
   const [cameraError, setCameraError] = useState<string | null>(null);
+  const html5QrCodeRef = useRef<Html5Qrcode | null>(null);
+  const scannerDivId = "barcode-scanner-region";
 
   useEffect(() => {
     return () => {
@@ -24,47 +25,70 @@ export default function BarcodeScanner({ onScan, onError }: BarcodeScannerProps)
   const startCamera = async () => {
     try {
       setCameraError(null);
-      const mediaStream = await navigator.mediaDevices.getUserMedia({
-        video: {
-          facingMode: "environment", // Use back camera on mobile
-          width: { ideal: 1280 },
-          height: { ideal: 720 },
-        },
-      });
-
-      if (videoRef.current) {
-        videoRef.current.srcObject = mediaStream;
-        await videoRef.current.play(); // Ensure video starts playing
-        setStream(mediaStream);
-        setIsScanning(true);
+      
+      // Initialize Html5Qrcode if not already done
+      if (!html5QrCodeRef.current) {
+        html5QrCodeRef.current = new Html5Qrcode(scannerDivId);
       }
-    } catch (error) {
-      const errorMessage = "Camera access denied. Please allow camera permission and try again.";
+
+      // Start scanning
+      await html5QrCodeRef.current.start(
+        { facingMode: "environment" }, // Use back camera on mobile
+        {
+          fps: 10,
+          qrbox: { width: 250, height: 150 },
+          aspectRatio: 1.7777778,
+        },
+        (decodedText, decodedResult) => {
+          // Success callback when barcode is scanned
+          console.log(`Barcode scanned: ${decodedText}`, decodedResult);
+          handleSuccessfulScan(decodedText);
+        },
+        (errorMessage) => {
+          // Error callback (called continuously when no barcode is found)
+          // We don't want to show these errors as they're normal
+        }
+      );
+
+      setIsScanning(true);
+    } catch (error: any) {
+      const errorMessage = error.message || "Camera access denied. Please allow camera permission and try again.";
       setCameraError(errorMessage);
       onError(new Error(errorMessage));
+      setIsScanning(false);
     }
   };
 
-  const stopCamera = () => {
-    if (stream) {
-      stream.getTracks().forEach(track => {
-        track.stop();
-      });
-      setStream(null);
-    }
-    if (videoRef.current) {
-      videoRef.current.srcObject = null;
+  const stopCamera = async () => {
+    try {
+      if (html5QrCodeRef.current && isScanning) {
+        await html5QrCodeRef.current.stop();
+        setScanResult(null);
+      }
+    } catch (error) {
+      console.error("Error stopping camera:", error);
     }
     setIsScanning(false);
-    setScanResult(null);
     setCameraError(null);
+  };
+
+  const handleSuccessfulScan = (barcode: string) => {
+    setScanResult(`Scanned: ${barcode}`);
+    
+    // Stop scanning briefly to show success message
+    setTimeout(() => {
+      setIsScanning(false);
+      stopCamera().then(() => {
+        onScan(barcode);
+      });
+    }, 1000);
   };
 
   // Sample products for demonstration
   const sampleProducts = [
-    { barcode: "123456789012", name: "Nike Air Max 270", price: "₹129.99" },
-    { barcode: "234567890123", name: "Organic Bananas", price: "₹3.49" },
-    { barcode: "345678901234", name: "Wireless Headphones", price: "₹89.99" }
+    { barcode: "123456789012", name: "Nike Air Max 270", price: "₹12,999" },
+    { barcode: "234567890123", name: "Organic Bananas", price: "₹349" },
+    { barcode: "345678901234", name: "Wireless Headphones", price: "₹8,999" }
   ];
 
   const simulateBarcodeScan = (barcode: string) => {
@@ -86,7 +110,7 @@ export default function BarcodeScanner({ onScan, onError }: BarcodeScannerProps)
           <div className="bg-gradient-to-br from-gray-900 via-gray-800 to-black rounded-2xl p-4 relative overflow-hidden min-h-[300px] flex items-center justify-center border border-green-500/20 shadow-2xl">
             {cameraError ? (
               <div className="text-center text-white">
-                <Camera className="mx-auto h-12 w-12 text-gray-400 mb-4" />
+                <AlertCircle className="mx-auto h-12 w-12 text-red-400 mb-4" />
                 <p className="text-sm mb-4">{cameraError}</p>
                 <Button onClick={startCamera} size="sm">
                   Try Again
@@ -95,76 +119,40 @@ export default function BarcodeScanner({ onScan, onError }: BarcodeScannerProps)
             ) : !isScanning ? (
               <div className="text-center text-white">
                 <Camera className="mx-auto h-12 w-12 text-gray-400 mb-4" />
-                <p className="text-sm mb-4">Ready to scan barcodes</p>
+                <p className="text-sm mb-2">Ready to scan barcodes</p>
+                <p className="text-xs text-gray-400 mb-4">Camera will activate when you start scanning</p>
                 <Button onClick={startCamera} size="sm" data-testid="button-start-camera">
                   <Camera className="mr-2 h-4 w-4" />
-                  Start Camera
+                  Start Scanning
                 </Button>
               </div>
             ) : (
-              <>
-                {/* Video element for camera feed */}
-                <video
-                  ref={videoRef}
-                  autoPlay
-                  playsInline
-                  muted
-                  className="w-full h-full max-w-sm mx-auto rounded-lg object-cover"
-                  style={{ minHeight: '250px', maxHeight: '300px' }}
-                  onLoadedMetadata={() => {
-                    if (videoRef.current) {
-                      videoRef.current.play().catch(console.error);
-                    }
-                  }}
-                  data-testid="video-camera"
-                />
-                
-                {/* Scanner overlay */}
-                <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                  <div className="relative w-64 h-48 max-w-full max-h-full">
-                    {/* Scanning frame */}
-                    <div className="absolute inset-0 border-2 border-accent rounded-lg">
-                      {/* Corner indicators */}
-                      <div className="absolute top-0 left-0 w-8 h-8 border-t-4 border-l-4 border-accent"></div>
-                      <div className="absolute top-0 right-0 w-8 h-8 border-t-4 border-r-4 border-accent"></div>
-                      <div className="absolute bottom-0 left-0 w-8 h-8 border-b-4 border-l-4 border-accent"></div>
-                      <div className="absolute bottom-0 right-0 w-8 h-8 border-b-4 border-r-4 border-accent"></div>
-                      
-                      {/* Scanning line */}
-                      <div className="absolute top-1/2 left-0 right-0 h-0.5 bg-accent shadow-lg shadow-accent/50 animate-pulse"></div>
-                    </div>
-                  </div>
-                </div>
+              <div className="w-full relative">
+                {/* Scanner container */}
+                <div id={scannerDivId} className="w-full max-w-md mx-auto"></div>
                 
                 {/* Camera status */}
-                <div className="absolute top-4 left-4 flex items-center space-x-2">
-                  <div className="w-2 h-2 rounded-full bg-accent animate-pulse"></div>
-                  <span className="text-white text-xs">Camera Active</span>
+                <div className="absolute top-4 left-4 flex items-center space-x-2 z-10">
+                  <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse"></div>
+                  <span className="text-white text-xs bg-black/50 px-2 py-1 rounded">Camera Active</span>
                 </div>
                 
                 {/* Scan result */}
                 {scanResult && (
-                  <div className="absolute bottom-16 left-0 right-0 text-center">
-                    <div className="inline-flex items-center space-x-2 bg-success text-white px-4 py-2 rounded-lg">
+                  <div className="absolute bottom-4 left-0 right-0 text-center z-10">
+                    <div className="inline-flex items-center space-x-2 bg-green-500 text-white px-4 py-2 rounded-lg">
                       <CheckCircle className="h-4 w-4" />
                       <span className="text-sm">{scanResult}</span>
                     </div>
                   </div>
                 )}
-                
-                {/* Instructions */}
-                <div className="absolute bottom-4 left-0 right-0 text-center">
-                  <p className="text-white text-sm">
-                    {scanResult ? "Adding to cart..." : "Align barcode within the frame"}
-                  </p>
-                </div>
-              </>
+              </div>
             )}
           </div>
           
           {/* Control buttons */}
           {isScanning && (
-            <div className="mt-4 flex justify-center">
+            <div className="mt-4 flex justify-center space-x-3">
               <Button
                 onClick={stopCamera}
                 variant="destructive"
@@ -172,7 +160,7 @@ export default function BarcodeScanner({ onScan, onError }: BarcodeScannerProps)
                 data-testid="button-stop-camera"
               >
                 <CameraOff className="mr-2 h-4 w-4" />
-                Stop Camera
+                Stop Scanning
               </Button>
             </div>
           )}
@@ -187,7 +175,7 @@ export default function BarcodeScanner({ onScan, onError }: BarcodeScannerProps)
             Test Barcode Scanner
           </h3>
           <p className="text-sm text-gray-600 mb-4">
-            Click any button below to simulate scanning a barcode:
+            Don't have a barcode? Use these test products:
           </p>
           <div className="grid grid-cols-1 gap-3">
             {sampleProducts.map((product) => (

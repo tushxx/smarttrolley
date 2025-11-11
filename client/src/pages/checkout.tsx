@@ -7,6 +7,7 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
+import { formatIndianPrice } from "@/lib/formatPrice";
 import { ArrowLeft, CreditCard, Shield, Smartphone, CreditCard as CardIcon, CheckCircle, Star, Lock, Package } from "lucide-react";
 import { useLocation } from "wouter";
 import type { CartWithItems } from "@shared/schema";

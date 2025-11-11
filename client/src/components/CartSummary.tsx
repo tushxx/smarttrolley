@@ -1,4 +1,5 @@
 import { Button } from "@/components/ui/button";
+import { formatIndianPrice } from "@/lib/formatPrice";
 import { CreditCard } from "lucide-react";
 import type { CartWithItems } from "@shared/schema";
 
@@ -22,13 +23,13 @@ export default function CartSummary({ cart, onCheckout }: CartSummaryProps) {
         <div className="flex justify-between text-sm">
           <span className="text-gray-600">Subtotal</span>
           <span className="font-medium" data-testid="text-summary-subtotal">
-            ${subtotal.toFixed(2)}
+            {formatIndianPrice(subtotal)}
           </span>
         </div>
         <div className="flex justify-between text-sm">
-          <span className="text-gray-600">Tax</span>
+          <span className="text-gray-600">Tax (GST 18%)</span>
           <span className="font-medium" data-testid="text-summary-tax">
-            ${tax.toFixed(2)}
+            {formatIndianPrice(tax)}
           </span>
         </div>
         <div className="flex justify-between text-sm">
@@ -39,7 +40,7 @@ export default function CartSummary({ cart, onCheckout }: CartSummaryProps) {
           <div className="flex justify-between text-lg font-semibold">
             <span>Total</span>
             <span className="text-primary" data-testid="text-summary-total">
-              ${total.toFixed(2)}
+              {formatIndianPrice(total)}
             </span>
           </div>
         </div>
