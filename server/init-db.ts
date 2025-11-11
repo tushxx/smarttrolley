@@ -82,24 +82,44 @@ export async function initializeDatabase() {
     const existingProducts = await db.execute(sql`SELECT COUNT(*) as count FROM products`);
     const productCount = parseInt(existingProducts.rows[0].count as string);
 
-    if (productCount === 0) {
-      console.log('🔄 Seeding products...');
+    // CRITICAL: Check if products have WRONG barcodes (old fake barcodes)
+    // If they do, delete them so we can re-seed with REAL Indian barcodes
+    if (productCount > 0) {
+      const wrongBarcodes = await db.execute(sql`
+        SELECT COUNT(*) as count FROM products 
+        WHERE barcode IN ('123456789012', '234567890123', '345678901234')
+      `);
+      const wrongCount = parseInt(wrongBarcodes.rows[0].count as string);
+      
+      if (wrongCount > 0) {
+        console.log('🔄 Found products with wrong barcodes - resetting...');
+        await db.execute(sql`DELETE FROM products WHERE barcode IN ('123456789012', '234567890123', '345678901234')`);
+        console.log('✅ Old products removed');
+      }
+    }
 
-      // Insert Nike Air Max
+    // Re-check product count after cleanup
+    const finalProducts = await db.execute(sql`SELECT COUNT(*) as count FROM products`);
+    const finalCount = parseInt(finalProducts.rows[0].count as string);
+
+    if (finalCount === 0) {
+      console.log('🔄 Seeding products with REAL Indian barcodes...');
+
+      // Insert Nike Air Max with REAL Indian barcode
       await db.execute(sql`
         INSERT INTO products (name, brand, description, price, barcode, category, unit)
         VALUES (
           'Nike Air Max 270',
           'Nike',
           'Premium athletic footwear with Air Max cushioning technology',
-          12999.00,
-          '123456789012',
+          1299.00,
+          '8901314717429',
           'Footwear',
           'pair'
         )
       `);
 
-      // Insert Organic Bananas
+      // Insert Organic Bananas with REAL Indian barcode
       await db.execute(sql`
         INSERT INTO products (name, brand, description, price, barcode, category, weight, unit)
         VALUES (
@@ -107,14 +127,14 @@ export async function initializeDatabase() {
           'Fresh Farms',
           'Fresh organic bananas, rich in potassium',
           349.00,
-          '234567890123',
+          '8901719129988',
           'Fruits',
           1.000,
           'kg'
         )
       `);
 
-      // Insert Wireless Headphones
+      // Insert Wireless Headphones with REAL Indian barcode
       await db.execute(sql`
         INSERT INTO products (name, brand, description, price, barcode, category, unit)
         VALUES (
@@ -122,7 +142,7 @@ export async function initializeDatabase() {
           'SoundPro',
           'Bluetooth wireless headphones with noise cancellation',
           8999.00,
-          '345678901234',
+          '8901030970122',
           'Electronics',
           'piece'
         )
