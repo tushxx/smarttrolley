@@ -1,4 +1,4 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -20,6 +20,8 @@ export default function Home() {
   const queryClient = useQueryClient();
   const { user } = useAuth();
   const processingBarcodeRef = useRef<string | null>(null);
+  const barcodeBufferRef = useRef<string>("");
+  const barcodeTimerRef = useRef<NodeJS.Timeout | null>(null);
 
   // Fetch cart data
   const { data: cart, isLoading: cartLoading } = useQuery<CartWithItems>({
