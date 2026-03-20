@@ -1,15 +1,65 @@
 import { useState, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Card, CardContent } from "@/components/ui/card";
-import { ShoppingCart, Phone, Sparkles, QrCode, Zap, Shield, Star } from "lucide-react";
+import { Camera, Cpu, CreditCard, Wifi } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 
+function SmartCartLogo({ size = 40 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
+      {/* Cart body */}
+      <path d="M8 14h4l4 14h16l4-10H14" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" fill="none"/>
+      {/* Wheels */}
+      <circle cx="18" cy="31" r="2.5" fill="white"/>
+      <circle cx="30" cy="31" r="2.5" fill="white"/>
+      {/* Screen/display on cart handle */}
+      <rect x="28" y="6" width="14" height="10" rx="2" fill="white" opacity="0.9"/>
+      {/* Screen content — camera icon */}
+      <circle cx="35" cy="11" r="2.5" fill="#16a34a"/>
+      <circle cx="35" cy="11" r="1.2" fill="white"/>
+      {/* Wifi signal dots */}
+      <circle cx="41" cy="7.5" r="0.8" fill="#4ade80"/>
+      {/* Handle */}
+      <line x1="34" y1="16" x2="32" y2="22" stroke="white" strokeWidth="2" strokeLinecap="round"/>
+    </svg>
+  );
+}
+
+const FEATURES = [
+  {
+    icon: Camera,
+    title: "AI Camera Detection",
+    desc: "YOLO11s model detects products in real-time. Just hold the item in front of the camera.",
+    color: "text-green-400",
+    bg: "bg-green-400/10 border-green-400/20",
+  },
+  {
+    icon: Cpu,
+    title: "Edge Computing",
+    desc: "Runs entirely on a Raspberry Pi 5. No cloud dependency. Instant, offline inference.",
+    color: "text-blue-400",
+    bg: "bg-blue-400/10 border-blue-400/20",
+  },
+  {
+    icon: CreditCard,
+    title: "Instant Checkout",
+    desc: "Pay directly from the trolley screen via Razorpay. Skip every queue at the store.",
+    color: "text-purple-400",
+    bg: "bg-purple-400/10 border-purple-400/20",
+  },
+  {
+    icon: Wifi,
+    title: "IoT Connected",
+    desc: "Weight sensors cross-verify detected items. AWS IoT backend syncs your cart in real time.",
+    color: "text-orange-400",
+    bg: "bg-orange-400/10 border-orange-400/20",
+  },
+];
+
 export default function Landing() {
-  const [mobileNumber, setMobileNumber] = useState("");
+  const [phone, setPhone] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -22,221 +72,186 @@ export default function Landing() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/auth/user"] });
     },
-    onError: (err: any) => {
-      toast({
-        title: "Login failed",
-        description: err.message || "Could not start session. Try again.",
-        variant: "destructive",
-      });
+    onError: () => {
+      toast({ title: "Error", description: "Could not start session. Try again.", variant: "destructive" });
     },
   });
 
   const handleLogin = () => {
-    const cleaned = mobileNumber.replace(/\D/g, "");
+    const cleaned = phone.replace(/\D/g, "");
     if (cleaned.length < 10) {
-      toast({
-        title: "Phone Number Required",
-        description: "Please enter a valid 10-digit mobile number.",
-        variant: "destructive",
-      });
+      toast({ title: "Invalid number", description: "Enter a 10-digit mobile number.", variant: "destructive" });
       return;
     }
-    loginMutation.mutate(mobileNumber);
-  };
-
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === "Enter") handleLogin();
-  };
-
-  const scrollToLogin = () => {
-    inputRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
-    inputRef.current?.focus();
+    loginMutation.mutate(phone);
   };
 
   return (
-    <div className="min-h-screen modern-gradient-bg">
-      {/* Header */}
-      <header className="p-6">
+    <div className="min-h-screen bg-[#050e05] text-white">
+
+      {/* ── Nav ── */}
+      <nav className="border-b border-white/5 px-6 py-4">
         <div className="max-w-6xl mx-auto flex items-center justify-between">
-          <div className="flex items-center space-x-3">
-            <div className="h-10 w-10 primary-gradient rounded-2xl flex items-center justify-center">
-              <ShoppingCart className="text-white h-5 w-5" />
+          <div className="flex items-center gap-3">
+            <div className="h-10 w-10 bg-green-600 rounded-xl flex items-center justify-center shadow-lg shadow-green-900/40">
+              <SmartCartLogo size={28} />
             </div>
             <div>
-              <h1 className="text-xl font-bold text-gray-900">SmartCart</h1>
-              <p className="text-xs text-gray-500">Smart Shopping Experience</p>
+              <span className="text-lg font-bold tracking-tight">SmartCart</span>
+              <div className="flex items-center gap-1.5 mt-0.5">
+                <span className="w-1.5 h-1.5 bg-green-400 rounded-full animate-pulse inline-block"></span>
+                <span className="text-xs text-green-400 font-medium">System Online</span>
+              </div>
             </div>
           </div>
-          <div className="flex items-center space-x-2 text-sm text-gray-600">
-            <Star className="h-4 w-4 fill-yellow-400 text-yellow-400" />
-            <span>AI-Powered · Final Year Project</span>
+          <div className="hidden md:flex items-center gap-6 text-sm text-white/50">
+            <span>YOLO11s · Raspberry Pi 5 · Razorpay</span>
           </div>
         </div>
-      </header>
+      </nav>
 
-      {/* Hero Section */}
-      <div className="max-w-6xl mx-auto px-6 py-12">
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 items-center">
+      {/* ── Hero ── */}
+      <div className="max-w-6xl mx-auto px-6 pt-16 pb-10">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-16 items-center">
 
-          {/* Left Content */}
+          {/* Left */}
           <div className="space-y-8">
-            <div className="space-y-6">
-              <div className="inline-flex items-center space-x-2 bg-green-50 border border-green-200 rounded-full px-4 py-2">
-                <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
-                <span className="text-sm font-medium text-green-700">Live Demo · YOLO11s Detection</span>
-              </div>
+            <div className="inline-flex items-center gap-2 bg-green-950/60 border border-green-500/20 rounded-full px-4 py-1.5 text-sm text-green-400">
+              <span className="w-2 h-2 bg-green-400 rounded-full animate-pulse"></span>
+              Final Year Engineering Project — 2025
+            </div>
 
-              <h1 className="text-5xl lg:text-6xl font-bold text-gray-900 leading-tight">
-                Scan. Add.
-                <span className="block bg-gradient-to-r from-green-600 to-green-400 bg-clip-text text-transparent">
-                  Checkout.
+            <div className="space-y-4">
+              <h1 className="text-5xl lg:text-6xl font-extrabold leading-[1.08] tracking-tight">
+                Shop Without
+                <span className="block text-transparent bg-clip-text bg-gradient-to-r from-green-400 to-emerald-300">
+                  Waiting in Line.
                 </span>
               </h1>
-
-              <p className="text-xl text-gray-600 leading-relaxed">
-                Point your camera at a product — our AI detects it in under 3 seconds
-                and adds it straight to your cart. No barcodes. No manual entry.
+              <p className="text-lg text-white/55 leading-relaxed max-w-lg">
+                A smart shopping trolley with an AI camera mounted on the handle. 
+                It detects products as you place them in, tracks your total live, 
+                and lets you pay and walk out — no cashier needed.
               </p>
             </div>
 
-            {/* Features Grid */}
-            <div className="grid grid-cols-2 gap-4">
-              <div className="flex items-center space-x-3">
-                <div className="w-10 h-10 bg-green-100 rounded-xl flex items-center justify-center">
-                  <QrCode className="h-5 w-5 text-green-600" />
-                </div>
-                <div>
-                  <p className="font-semibold text-gray-900">Vision Detection</p>
-                  <p className="text-sm text-gray-500">YOLO11s model</p>
-                </div>
-              </div>
-
-              <div className="flex items-center space-x-3">
-                <div className="w-10 h-10 bg-blue-100 rounded-xl flex items-center justify-center">
-                  <Zap className="h-5 w-5 text-blue-600" />
-                </div>
-                <div>
-                  <p className="font-semibold text-gray-900">Instant Add</p>
-                  <p className="text-sm text-gray-500">2-frame confirm</p>
-                </div>
-              </div>
-
-              <div className="flex items-center space-x-3">
-                <div className="w-10 h-10 bg-purple-100 rounded-xl flex items-center justify-center">
-                  <Shield className="h-5 w-5 text-purple-600" />
-                </div>
-                <div>
-                  <p className="font-semibold text-gray-900">Secure Payments</p>
-                  <p className="text-sm text-gray-500">Razorpay · INR</p>
-                </div>
-              </div>
-
-              <div className="flex items-center space-x-3">
-                <div className="w-10 h-10 bg-orange-100 rounded-xl flex items-center justify-center">
-                  <Sparkles className="h-5 w-5 text-orange-600" />
-                </div>
-                <div>
-                  <p className="font-semibold text-gray-900">No Queues</p>
-                  <p className="text-sm text-gray-500">Self-checkout</p>
-                </div>
-              </div>
+            {/* Tech stack pills */}
+            <div className="flex flex-wrap gap-2">
+              {["YOLO11s", "Raspberry Pi 5", "Razorpay", "AWS IoT", "React"].map((tag) => (
+                <span
+                  key={tag}
+                  className="px-3 py-1 text-xs font-medium text-white/60 border border-white/10 rounded-full bg-white/5"
+                >
+                  {tag}
+                </span>
+              ))}
             </div>
 
-            <Button
-              onClick={scrollToLogin}
-              className="h-14 px-8 primary-gradient text-lg font-semibold rounded-2xl shadow-lg hover:shadow-xl transition-all duration-300"
-            >
-              Get Started — It's Free
-            </Button>
+            {/* Stats row */}
+            <div className="flex gap-8 pt-2 border-t border-white/8">
+              <div>
+                <div className="text-2xl font-bold text-white">5</div>
+                <div className="text-xs text-white/40 mt-0.5">Product classes</div>
+              </div>
+              <div>
+                <div className="text-2xl font-bold text-white">&lt;3s</div>
+                <div className="text-xs text-white/40 mt-0.5">Detection time</div>
+              </div>
+              <div>
+                <div className="text-2xl font-bold text-white">₹0</div>
+                <div className="text-xs text-white/40 mt-0.5">Checkout queue</div>
+              </div>
+            </div>
           </div>
 
-          {/* Right Content — Login Card */}
+          {/* Right — Login card */}
           <div className="flex justify-center lg:justify-end">
-            <Card className="w-full max-w-md modern-card">
-              <CardContent className="p-8">
-                <div className="text-center mb-8">
-                  <div className="w-12 h-12 primary-gradient rounded-2xl flex items-center justify-center mx-auto mb-4">
-                    <Phone className="h-6 w-6 text-white" />
-                  </div>
-                  <h2 className="text-2xl font-bold text-gray-900">Welcome to SmartCart</h2>
-                  <p className="text-gray-500 mt-1 text-sm">Enter your mobile number to begin</p>
-                </div>
-
-                <div className="space-y-5">
-                  <div>
-                    <Label htmlFor="mobile" className="block text-sm font-medium text-gray-700 mb-2">
-                      Mobile Number
-                    </Label>
-                    <div className="relative">
-                      <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
-                        <Phone className="h-4 w-4 text-gray-400" />
-                      </div>
-                      <Input
-                        ref={inputRef}
-                        id="mobile"
-                        type="tel"
-                        value={mobileNumber}
-                        onChange={(e) => setMobileNumber(e.target.value)}
-                        onKeyDown={handleKeyDown}
-                        placeholder="+91 98765 43210"
-                        className="pl-11 h-12 border-gray-200 focus:border-green-500 focus:ring-green-500 rounded-xl"
-                        disabled={loginMutation.isPending}
-                        autoFocus
-                      />
-                    </div>
-                  </div>
-
-                  <Button
-                    onClick={handleLogin}
-                    disabled={loginMutation.isPending || mobileNumber.replace(/\D/g, "").length < 10}
-                    className="w-full h-12 primary-gradient font-semibold rounded-xl text-base"
-                  >
-                    {loginMutation.isPending ? "Starting session…" : "Start Shopping →"}
-                  </Button>
-
-                  <p className="text-center text-xs text-gray-400 pt-1">
-                    No OTP · No password · No account needed
+            <div className="w-full max-w-sm">
+              <div className="bg-white/5 border border-white/10 rounded-3xl p-8 backdrop-blur-md">
+                
+                {/* Card header */}
+                <div className="mb-7">
+                  <h2 className="text-xl font-bold text-white">Start a session</h2>
+                  <p className="text-sm text-white/40 mt-1">
+                    Enter your mobile number to open your cart
                   </p>
                 </div>
 
-                {/* Trust indicators */}
-                <div className="mt-8 pt-6 border-t border-gray-100">
-                  <div className="flex justify-center items-center space-x-4 text-gray-400 text-xs">
-                    <div className="flex items-center space-x-1">
-                      <Shield className="h-3 w-3" />
-                      <span>Session secured</span>
+                {/* Phone input */}
+                <div className="space-y-3">
+                  <div className="relative">
+                    <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
+                      <span className="text-white/30 text-sm">+91</span>
+                      <div className="w-px h-4 bg-white/10 mx-3"></div>
                     </div>
-                    <div className="w-1 h-1 bg-gray-300 rounded-full"></div>
-                    <span>5 product classes</span>
-                    <div className="w-1 h-1 bg-gray-300 rounded-full"></div>
+                    <input
+                      ref={inputRef}
+                      type="tel"
+                      value={phone}
+                      onChange={(e) => setPhone(e.target.value)}
+                      onKeyDown={(e) => e.key === "Enter" && handleLogin()}
+                      placeholder="98765 43210"
+                      disabled={loginMutation.isPending}
+                      autoFocus
+                      className="w-full bg-white/8 border border-white/12 rounded-xl pl-20 pr-4 py-3.5 text-white placeholder-white/20 text-base focus:outline-none focus:border-green-500/60 focus:bg-white/10 transition-all"
+                    />
+                  </div>
+
+                  <button
+                    onClick={handleLogin}
+                    disabled={loginMutation.isPending || phone.replace(/\D/g, "").length < 10}
+                    className="w-full py-3.5 rounded-xl font-semibold text-base bg-green-500 hover:bg-green-400 text-white disabled:opacity-40 disabled:cursor-not-allowed transition-all duration-200 shadow-lg shadow-green-900/30"
+                  >
+                    {loginMutation.isPending ? "Opening cart…" : "Open My Cart →"}
+                  </button>
+                </div>
+
+                <p className="text-center text-xs text-white/25 mt-5">
+                  No OTP · No password · Session expires when you log out
+                </p>
+
+                {/* Divider */}
+                <div className="border-t border-white/8 mt-6 pt-6">
+                  <div className="flex items-center justify-between text-xs text-white/25">
+                    <span>Session secured</span>
+                    <span>·</span>
+                    <span>In-store use only</span>
+                    <span>·</span>
                     <span>Razorpay payments</span>
                   </div>
                 </div>
-              </CardContent>
-            </Card>
-          </div>
-        </div>
-
-        {/* Bottom Stats */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-8 mt-16 pt-12 border-t border-gray-200">
-          <div className="text-center">
-            <div className="text-3xl font-bold text-gray-900">5</div>
-            <div className="text-sm text-gray-600 mt-1">Product Classes</div>
-          </div>
-          <div className="text-center">
-            <div className="text-3xl font-bold text-gray-900">&gt;90%</div>
-            <div className="text-sm text-gray-600 mt-1">Detection Accuracy</div>
-          </div>
-          <div className="text-center">
-            <div className="text-3xl font-bold text-gray-900">3s</div>
-            <div className="text-sm text-gray-600 mt-1">Avg Detect Time</div>
-          </div>
-          <div className="text-center">
-            <div className="text-3xl font-bold text-gray-900">0₹</div>
-            <div className="text-sm text-gray-600 mt-1">Setup Cost</div>
+              </div>
+            </div>
           </div>
         </div>
       </div>
+
+      {/* ── Feature cards ── */}
+      <div className="max-w-6xl mx-auto px-6 py-14">
+        <div className="text-center mb-10">
+          <h2 className="text-2xl font-bold text-white">How it works</h2>
+          <p className="text-white/40 text-sm mt-2">The full stack behind the trolley</p>
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          {FEATURES.map(({ icon: Icon, title, desc, color, bg }) => (
+            <div key={title} className={`rounded-2xl border p-6 ${bg} backdrop-blur-sm`}>
+              <div className={`mb-3 ${color}`}>
+                <Icon className="h-6 w-6" />
+              </div>
+              <h3 className="font-semibold text-white text-sm mb-2">{title}</h3>
+              <p className="text-xs text-white/40 leading-relaxed">{desc}</p>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* ── Footer ── */}
+      <footer className="border-t border-white/5 px-6 py-6">
+        <div className="max-w-6xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-white/25">
+          <span>SmartCart · Final Year Engineering Project</span>
+          <span>Built with YOLO11s · React · Raspberry Pi 5</span>
+        </div>
+      </footer>
     </div>
   );
 }
