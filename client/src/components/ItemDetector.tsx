@@ -2,11 +2,15 @@ import { useRef, useState, useEffect, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Camera, CameraOff, Loader2, CheckCircle, X } from "lucide-react";
+import { Camera, CameraOff, Loader2, CheckCircle, RotateCcw } from "lucide-react";
 
-interface Detection {
-  class: string;
-  confidence: number;
+interface DetectionProduct {
+  id: string;
+  name: string;
+  brand: string | null;
+  price: string;
+  imageUrl: string | null;
+  detectionClass: string;
 }
 
 interface DetectionResult {
@@ -14,66 +18,45 @@ interface DetectionResult {
   class?: string;
   confidence?: number;
   productFound?: boolean;
-  product?: {
-    id: string;
-    name: string;
-    brand: string | null;
-    price: string;
-    imageUrl: string | null;
-    detectionClass: string;
-  };
-  allDetections?: Detection[];
+  product?: DetectionProduct;
   message?: string;
 }
 
 interface ItemDetectorProps {
-  onItemDetected: (product: DetectionResult["product"]) => void;
+  onItemDetected: (product: DetectionProduct) => void;
   onClose: () => void;
 }
 
-const FRAME_INTERVAL_MS = 1500;   // send frame every 1.5 s
-const CONFIRM_FRAMES    = 2;       // consecutive detections before auto-confirm
+const FRAME_INTERVAL_MS = 1500;
+const CONFIRM_FRAMES    = 2;
+
+type Phase = "idle" | "scanning" | "confirmed" | "adding";
 
 export default function ItemDetector({ onItemDetected, onClose }: ItemDetectorProps) {
-  const videoRef        = useRef<HTMLVideoElement>(null);
-  const canvasRef       = useRef<HTMLCanvasElement>(null);
-  const streamRef       = useRef<MediaStream | null>(null);
-  const intervalRef     = useRef<NodeJS.Timeout | null>(null);
-  const confirmsRef     = useRef<Record<string, number>>({});
-  const stoppedRef      = useRef(false);
+  const videoRef    = useRef<HTMLVideoElement>(null);
+  const canvasRef   = useRef<HTMLCanvasElement>(null);
+  const streamRef   = useRef<MediaStream | null>(null);
+  const intervalRef = useRef<NodeJS.Timeout | null>(null);
+  const hitsRef     = useRef<Record<string, number>>({});
+  const lockedRef   = useRef(false);
 
-  const [cameraActive,   setCameraActive]   = useState(false);
-  const [detecting,      setDetecting]      = useState(false);
-  const [error,          setError]          = useState<string | null>(null);
-  const [liveResult,     setLiveResult]     = useState<DetectionResult | null>(null);
-  const [confirmedItem,  setConfirmedItem]  = useState<DetectionResult | null>(null);
-  const [serviceOnline,  setServiceOnline]  = useState<boolean | null>(null);
-
-  // Check whether the detection service is running
-  useEffect(() => {
-    fetch("/api/detect", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ image: "" }),
-    })
-      .then(() => setServiceOnline(true))
-      .catch(() => setServiceOnline(false));
-  }, []);
+  const [phase,       setPhase]       = useState<Phase>("idle");
+  const [liveLabel,   setLiveLabel]   = useState<string | null>(null);
+  const [confidence,  setConfidence]  = useState(0);
+  const [confirmed,   setConfirmed]   = useState<DetectionResult | null>(null);
+  const [error,       setError]       = useState<string | null>(null);
 
   const stopCamera = useCallback(() => {
-    stoppedRef.current = true;
-    if (intervalRef.current) clearInterval(intervalRef.current);
-    if (streamRef.current) {
-      streamRef.current.getTracks().forEach((t) => t.stop());
-      streamRef.current = null;
-    }
-    setCameraActive(false);
-    setDetecting(false);
+    if (intervalRef.current) { clearInterval(intervalRef.current); intervalRef.current = null; }
+    if (streamRef.current) { streamRef.current.getTracks().forEach(t => t.stop()); streamRef.current = null; }
   }, []);
 
   const startCamera = useCallback(async () => {
     setError(null);
-    stoppedRef.current = false;
+    lockedRef.current = false;
+    hitsRef.current = {};
+    setConfirmed(null);
+    setLiveLabel(null);
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
         video: { facingMode: "environment", width: 640, height: 480 },
@@ -83,236 +66,201 @@ export default function ItemDetector({ onItemDetected, onClose }: ItemDetectorPr
         videoRef.current.srcObject = stream;
         await videoRef.current.play();
       }
-      setCameraActive(true);
+      setPhase("scanning");
     } catch (e: any) {
       setError(`Camera error: ${e.message}`);
     }
   }, []);
 
   const captureFrame = useCallback((): string | null => {
-    const video  = videoRef.current;
-    const canvas = canvasRef.current;
-    if (!video || !canvas || video.readyState < 2) return null;
-
-    canvas.width  = video.videoWidth;
-    canvas.height = video.videoHeight;
-    const ctx = canvas.getContext("2d");
+    const v = videoRef.current, c = canvasRef.current;
+    if (!v || !c || v.readyState < 2) return null;
+    c.width = v.videoWidth; c.height = v.videoHeight;
+    const ctx = c.getContext("2d");
     if (!ctx) return null;
-    ctx.drawImage(video, 0, 0);
-    // Return as JPEG base64 (smaller than PNG)
-    return canvas.toDataURL("image/jpeg", 0.7);
+    ctx.drawImage(v, 0, 0);
+    return c.toDataURL("image/jpeg", 0.7);
   }, []);
 
   const sendFrame = useCallback(async () => {
-    if (stoppedRef.current) return;
+    if (lockedRef.current) return;
     const frame = captureFrame();
     if (!frame) return;
 
-    setDetecting(true);
     try {
       const resp = await fetch("/api/detect", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ image: frame }),
       });
-      if (!resp.ok) return;
+      if (!resp.ok || lockedRef.current) return;
 
       const data: DetectionResult = await resp.json();
-      if (stoppedRef.current) return;
-
-      setLiveResult(data);
+      if (lockedRef.current) return;
 
       if (data.detected && data.productFound && data.class) {
-        // Track consecutive detections of the same class
-        confirmsRef.current[data.class] = (confirmsRef.current[data.class] || 0) + 1;
+        setLiveLabel(data.class);
+        setConfidence(data.confidence ? Math.round(data.confidence * 100) : 0);
 
-        if (confirmsRef.current[data.class] >= CONFIRM_FRAMES) {
-          // Confirmed — stop scanning and bubble up
+        hitsRef.current[data.class] = (hitsRef.current[data.class] || 0) + 1;
+
+        if (hitsRef.current[data.class] >= CONFIRM_FRAMES) {
+          // Lock immediately — no more frames will be processed
+          lockedRef.current = true;
           stopCamera();
-          setConfirmedItem(data);
+          setConfirmed(data);
+          setPhase("confirmed");
         }
       } else {
-        // Reset counters for stale classes
-        confirmsRef.current = {};
+        // No confident detection — clear counter for stale classes
+        hitsRef.current = {};
+        setLiveLabel(null);
       }
     } catch {
-      // network error — keep scanning
-    } finally {
-      setDetecting(false);
+      // network glitch — keep scanning
     }
   }, [captureFrame, stopCamera]);
 
-  // Start sending frames once camera is active
+  // Send frames while scanning
   useEffect(() => {
-    if (!cameraActive) return;
-    confirmsRef.current = {};
+    if (phase !== "scanning") return;
     intervalRef.current = setInterval(sendFrame, FRAME_INTERVAL_MS);
     return () => { if (intervalRef.current) clearInterval(intervalRef.current); };
-  }, [cameraActive, sendFrame]);
+  }, [phase, sendFrame]);
 
   // Cleanup on unmount
   useEffect(() => () => stopCamera(), [stopCamera]);
 
-  const handleConfirm = () => {
-    if (confirmedItem?.product) {
-      onItemDetected(confirmedItem.product);
-    }
+  const handleAddToCart = () => {
+    if (!confirmed?.product || phase === "adding") return;
+    setPhase("adding");
+    onItemDetected(confirmed.product);
   };
 
   const handleRescan = () => {
-    setConfirmedItem(null);
-    setLiveResult(null);
-    confirmsRef.current = {};
-    stoppedRef.current = false;
-    startCamera();
+    stopCamera();
+    setPhase("idle");
+    setConfirmed(null);
+    setLiveLabel(null);
+    // Small delay so camera permission resets cleanly
+    setTimeout(startCamera, 200);
   };
 
-  const confidencePct = liveResult?.confidence
-    ? Math.round(liveResult.confidence * 100)
-    : 0;
-
   return (
-    <div className="flex flex-col gap-4">
-      {/* Service status */}
-      {serviceOnline === false && (
-        <div className="rounded-md bg-yellow-50 border border-yellow-200 px-4 py-3 text-sm text-yellow-800">
-          ⚠️ Detection service is starting up. Camera detection will begin shortly.
-        </div>
-      )}
-
-      {/* Error */}
+    <div className="flex flex-col gap-3">
       {error && (
-        <div className="rounded-md bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-700">
+        <div className="rounded-lg bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-700">
           {error}
         </div>
       )}
 
-      {/* Confirmed item card */}
-      {confirmedItem?.product ? (
+      {/* ── Confirmed item ── */}
+      {phase === "confirmed" || phase === "adding" ? (
         <Card className="border-green-200 bg-green-50">
           <CardContent className="pt-4 flex flex-col gap-3">
             <div className="flex items-center gap-2 text-green-700 font-semibold">
               <CheckCircle className="w-5 h-5" />
               Item Detected!
             </div>
-            {confirmedItem.product.imageUrl && (
+            {confirmed?.product?.imageUrl && (
               <img
-                src={confirmedItem.product.imageUrl}
-                alt={confirmedItem.product.name}
-                className="w-24 h-24 object-cover rounded-lg mx-auto"
+                src={confirmed.product.imageUrl}
+                alt={confirmed.product.name}
+                className="w-24 h-24 object-cover rounded-xl mx-auto"
               />
             )}
             <div className="text-center">
-              <p className="font-bold text-lg">{confirmedItem.product.name}</p>
-              {confirmedItem.product.brand && (
-                <p className="text-sm text-muted-foreground">{confirmedItem.product.brand}</p>
+              <p className="font-bold text-lg">{confirmed?.product?.name}</p>
+              {confirmed?.product?.brand && (
+                <p className="text-sm text-muted-foreground">{confirmed.product.brand}</p>
               )}
-              <p className="text-xl font-bold text-green-700 mt-1">
-                ₹{parseFloat(confirmedItem.product.price).toLocaleString("en-IN")}
+              <p className="text-2xl font-bold text-green-700 mt-1">
+                ₹{parseFloat(confirmed?.product?.price || "0").toLocaleString("en-IN")}
               </p>
+              {confidence > 0 && (
+                <p className="text-xs text-gray-500 mt-1">Confidence: {confidence}%</p>
+              )}
             </div>
-            <div className="flex gap-2">
-              <Button className="flex-1 bg-green-600 hover:bg-green-700" onClick={handleConfirm}>
-                Add to Cart
+            <div className="flex gap-2 mt-1">
+              <Button
+                className="flex-1 bg-green-600 hover:bg-green-700 text-white"
+                onClick={handleAddToCart}
+                disabled={phase === "adding"}
+              >
+                {phase === "adding" ? (
+                  <><Loader2 className="w-4 h-4 animate-spin mr-1" /> Adding…</>
+                ) : "Add to Cart"}
               </Button>
-              <Button variant="outline" className="flex-1" onClick={handleRescan}>
-                Rescan
+              <Button variant="outline" className="flex-1 gap-1" onClick={handleRescan} disabled={phase === "adding"}>
+                <RotateCcw className="w-4 h-4" /> Rescan
               </Button>
             </div>
           </CardContent>
         </Card>
       ) : (
         <>
-          {/* Camera viewport */}
+          {/* ── Camera viewport ── */}
           <div className="relative rounded-xl overflow-hidden bg-black aspect-video">
-            <video
-              ref={videoRef}
-              className="w-full h-full object-cover"
-              muted
-              playsInline
-            />
+            <video ref={videoRef} className="w-full h-full object-cover" muted playsInline />
 
-            {/* Scanning overlay */}
-            {cameraActive && (
+            {/* Scanning frame overlay */}
+            {phase === "scanning" && (
               <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
-                <div className="w-48 h-48 border-4 border-white/70 rounded-2xl relative">
-                  {/* Corner accents */}
-                  {["top-0 left-0","top-0 right-0","bottom-0 left-0","bottom-0 right-0"].map((pos, i) => (
-                    <div key={i} className={`absolute ${pos} w-6 h-6 border-4 border-blue-400 rounded-sm`} />
+                <div className="w-48 h-48 border-4 border-white/60 rounded-2xl relative">
+                  {["top-0 left-0", "top-0 right-0", "bottom-0 left-0", "bottom-0 right-0"].map((pos, i) => (
+                    <div key={i} className={`absolute ${pos} w-6 h-6 border-4 border-green-400 rounded-sm`} />
                   ))}
                 </div>
                 <p className="mt-3 text-white text-sm bg-black/50 px-3 py-1 rounded-full">
-                  Point camera at product
+                  {liveLabel ? `Detecting: ${liveLabel}…` : "Point camera at product"}
                 </p>
               </div>
             )}
 
-            {/* Detection badge */}
-            {cameraActive && liveResult && (
+            {/* Live detection badge */}
+            {phase === "scanning" && liveLabel && (
               <div className="absolute top-2 right-2">
-                {liveResult.detected && liveResult.productFound ? (
-                  <Badge className="bg-green-500 text-white">
-                    {liveResult.class} · {confidencePct}%
-                  </Badge>
-                ) : liveResult.detected ? (
-                  <Badge variant="secondary">{liveResult.class} (no product)</Badge>
-                ) : (
-                  <Badge variant="outline" className="bg-white/80">Scanning…</Badge>
-                )}
-              </div>
-            )}
-
-            {/* Detecting spinner */}
-            {detecting && (
-              <div className="absolute bottom-2 left-2">
-                <Badge variant="outline" className="bg-white/80 gap-1">
-                  <Loader2 className="w-3 h-3 animate-spin" /> Analyzing
+                <Badge className="bg-green-500 text-white animate-pulse">
+                  {liveLabel} · {confidence}%
                 </Badge>
               </div>
             )}
 
-            {/* Placeholder when camera is off */}
-            {!cameraActive && (
+            {/* Camera off placeholder */}
+            {phase === "idle" && (
               <div className="absolute inset-0 flex items-center justify-center">
-                <div className="text-center text-white/60">
+                <div className="text-center text-white/50">
                   <CameraOff className="w-12 h-12 mx-auto mb-2" />
-                  <p className="text-sm">Camera is off</p>
+                  <p className="text-sm">Camera off</p>
                 </div>
               </div>
             )}
           </div>
 
-          {/* Hidden canvas for frame capture */}
           <canvas ref={canvasRef} className="hidden" />
 
           {/* Controls */}
           <div className="flex gap-2">
-            {!cameraActive ? (
-              <Button className="flex-1 gap-2" onClick={startCamera}>
+            {phase === "idle" ? (
+              <Button className="flex-1 gap-2 bg-green-600 hover:bg-green-700 text-white" onClick={startCamera}>
                 <Camera className="w-4 h-4" />
                 Start Camera
               </Button>
             ) : (
-              <Button variant="outline" className="flex-1 gap-2" onClick={stopCamera}>
+              <Button variant="outline" className="flex-1 gap-2" onClick={() => { stopCamera(); setPhase("idle"); setLiveLabel(null); }}>
                 <CameraOff className="w-4 h-4" />
-                Stop Camera
+                Stop
               </Button>
             )}
-            <Button variant="ghost" size="icon" onClick={onClose}>
-              <X className="w-4 h-4" />
+            <Button variant="ghost" className="px-4 text-gray-500" onClick={onClose}>
+              Cancel
             </Button>
           </div>
 
-          {/* Live detections list */}
-          {liveResult?.allDetections && liveResult.allDetections.length > 0 && (
-            <div className="text-xs text-muted-foreground">
-              <p className="font-medium mb-1">All detections:</p>
-              {liveResult.allDetections.map((d, i) => (
-                <span key={i} className="inline-block mr-2 mb-1 bg-muted px-2 py-0.5 rounded-full">
-                  {d.class} {Math.round(d.confidence * 100)}%
-                </span>
-              ))}
-            </div>
+          {phase === "scanning" && (
+            <p className="text-center text-xs text-gray-400">
+              Hold the product steady — detection takes about 3 seconds
+            </p>
           )}
         </>
       )}

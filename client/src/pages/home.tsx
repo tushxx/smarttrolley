@@ -52,10 +52,10 @@ export default function Home() {
       if (isUnauthorizedError(error)) {
         toast({
           title: "Session Expired",
-          description: "Please log in again to continue shopping",
+          description: "Please enter your mobile number again to continue",
           variant: "destructive",
         });
-        setTimeout(() => { window.location.href = "/api/login"; }, 500);
+        setTimeout(() => { window.location.href = "/"; }, 500);
         return;
       }
       if (error.message?.includes("already in cart")) {
@@ -74,13 +74,16 @@ export default function Home() {
     },
   });
 
-  const handleItemDetected = (product: Product | undefined) => {
+  const handleItemDetected = (product: { id: string }) => {
     setShowDetector(false);
-    if (!product) return;
     addToCartMutation.mutate(product.id);
   };
 
-  const handleLogout = () => { window.location.href = "/api/logout"; };
+  const handleLogout = async () => {
+    await fetch("/api/auth/logout", { method: "POST" });
+    queryClient.clear();
+    window.location.href = "/";
+  };
 
   const proceedToCheckout = () => {
     if (!cart?.items || cart.items.length === 0) {
@@ -157,7 +160,7 @@ export default function Home() {
               <div className="flex items-center space-x-3">
                 <div className="text-right hidden sm:block">
                   <p className="text-sm font-medium text-gray-900">
-                    {(user as any)?.firstName || (user as any)?.email?.split("@")[0] || "User"}
+                    +{(user as any)?.phoneNumber || "User"}
                   </p>
                   <p className="text-xs text-gray-500">Welcome back!</p>
                 </div>

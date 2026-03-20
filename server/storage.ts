@@ -83,7 +83,7 @@ class MemStorage implements IStorage {
   async getAllProducts() { return [...DEMO_PRODUCTS]; }
 
   async getActiveCart(userId: string): Promise<CartWithItems | undefined> {
-    for (const cart of this.carts.values()) {
+    for (const cart of Array.from(this.carts.values())) {
       if (cart.userId === userId && cart.status === "active") {
         return this.getCartWithItems(cart.id);
       }
@@ -97,7 +97,7 @@ class MemStorage implements IStorage {
   }
   async addItemToCart(cartId: string, item: InsertCartItem): Promise<CartItem> {
     // find existing
-    for (const [key, ci] of this.items.entries()) {
+    for (const [key, ci] of Array.from(this.items.entries())) {
       if (ci.cartId === cartId && ci.productId === item.productId) {
         const updated = { ...ci, quantity: ci.quantity + (item.quantity || 1) };
         this.items.set(key, updated);
@@ -119,7 +119,7 @@ class MemStorage implements IStorage {
   async getCartWithItems(cartId: string): Promise<CartWithItems | undefined> {
     const cart = this.carts.get(cartId);
     if (!cart) return undefined;
-    const cartItemsList = [...this.items.values()].filter(i => i.cartId === cartId);
+    const cartItemsList = Array.from(this.items.values()).filter(i => i.cartId === cartId);
     return { ...cart, items: cartItemsList as CartItemWithProduct[] };
   }
   async createOrder(userId: string, cartId: string, orderData: InsertOrder): Promise<Order> {
@@ -134,7 +134,7 @@ class MemStorage implements IStorage {
     return updated;
   }
   async getUserOrders(userId: string) {
-    return [...this.orderMap.values()].filter(o => o.userId === userId);
+    return Array.from(this.orderMap.values()).filter(o => o.userId === userId);
   }
 }
 

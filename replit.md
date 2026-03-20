@@ -98,3 +98,10 @@ Preferred communication style: Simple, everyday language.
 2. **USB barcode input** — NOT added (user will request when ready)
 3. **Raspberry Pi integration** — Future (webcam used for now)
 4. **Weight sensor auth** — Future hardware integration
+
+# Recent Changes (Current Session)
+- **Landing page** — Simple phone number input only; calls `/api/auth/phone`; no OTP, no Google login
+- **ItemDetector.tsx** — Strict single-item detection: camera locks after 2 consecutive frames ≥ 50% confidence, stops all scanning, shows confirm/rescan buttons; can only add 1 item per scan session
+- **Phone auth flow** — `POST /api/auth/phone` → session stored; `GET /api/auth/user` → returns `{ id, phoneNumber }`; `POST /api/auth/logout` → session destroyed
+- **home.tsx** — Logout calls `/api/auth/logout`, user display shows phone number, session expiry redirects to `/`
+- **storage.ts** — Fixed TypeScript MapIterator errors using `Array.from()`; deleted unused `qrService.ts`
