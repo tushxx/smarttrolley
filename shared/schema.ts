@@ -8,7 +8,6 @@ import {
   text,
   decimal,
   integer,
-  boolean,
 } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
@@ -37,14 +36,14 @@ export const users = pgTable("users", {
   updatedAt: timestamp("updated_at").defaultNow(),
 });
 
-// Products table
+// Products table - keyed by YOLO detection class name
 export const products = pgTable("products", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   name: text("name").notNull(),
   brand: text("brand"),
   description: text("description"),
   price: decimal("price", { precision: 10, scale: 2 }).notNull(),
-  barcode: varchar("barcode").unique().notNull(),
+  detectionClass: varchar("detection_class").unique().notNull(), // YOLO class label
   imageUrl: text("image_url"),
   category: varchar("category"),
   weight: decimal("weight", { precision: 10, scale: 3 }),
@@ -56,7 +55,7 @@ export const products = pgTable("products", {
 export const shoppingCarts = pgTable("shopping_carts", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   userId: varchar("user_id").references(() => users.id).notNull(),
-  status: varchar("status").default("active"), // active, completed, abandoned
+  status: varchar("status").default("active"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
@@ -67,7 +66,7 @@ export const cartItems = pgTable("cart_items", {
   cartId: varchar("cart_id").references(() => shoppingCarts.id).notNull(),
   productId: varchar("product_id").references(() => products.id).notNull(),
   quantity: integer("quantity").notNull().default(1),
-  scannedAt: timestamp("scanned_at").defaultNow(),
+  detectedAt: timestamp("detected_at").defaultNow(),
 });
 
 // Orders table
@@ -75,7 +74,7 @@ export const orders = pgTable("orders", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   userId: varchar("user_id").references(() => users.id).notNull(),
   cartId: varchar("cart_id").references(() => shoppingCarts.id),
-  status: varchar("status").default("pending"), // pending, paid, failed, cancelled
+  status: varchar("status").default("pending"),
   subtotal: decimal("subtotal", { precision: 10, scale: 2 }).notNull(),
   tax: decimal("tax", { precision: 10, scale: 2 }).notNull(),
   total: decimal("total", { precision: 10, scale: 2 }).notNull(),
@@ -94,7 +93,10 @@ export const insertUserSchema = createInsertSchema(users).pick({
   mobileNumber: true,
 });
 
-export const insertProductSchema = createInsertSchema(products);
+export const insertProductSchema = createInsertSchema(products).omit({
+  id: true,
+  createdAt: true,
+});
 
 export const insertCartItemSchema = createInsertSchema(cartItems).pick({
   productId: true,
