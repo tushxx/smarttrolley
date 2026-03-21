@@ -1,20 +1,36 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
 import { isUnauthorizedError } from "@/lib/authUtils";
 import { useAuth } from "@/hooks/useAuth";
 import ItemDetector from "@/components/ItemDetector";
 import CartItem from "@/components/CartItem";
-import CartSummary from "@/components/CartSummary";
-import {
-  ShoppingCart, User, LogOut, Plus, Bell,
-  Search, TrendingUp, Package, CreditCard, Camera, Scan,
-} from "lucide-react";
+import { Camera, LogOut, ShoppingCart, Scan, CreditCard, ChevronRight } from "lucide-react";
 import { useLocation } from "wouter";
-import type { CartWithItems, Product } from "@shared/schema";
+import type { CartWithItems } from "@shared/schema";
+
+function Logo() {
+  return (
+    <svg width="32" height="32" viewBox="0 0 36 36" fill="none">
+      <rect width="36" height="36" rx="9" fill="#16a34a"/>
+      <path d="M9 11h2.5l3 9h10l3-7H13.5" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+      <circle cx="16" cy="22.5" r="1.8" fill="white"/>
+      <circle cx="24" cy="22.5" r="1.8" fill="white"/>
+      <circle cx="26" cy="13" r="3" fill="white" opacity="0.9"/>
+      <circle cx="26" cy="13" r="1.4" fill="#16a34a"/>
+      <circle cx="26.6" cy="12.4" r="0.4" fill="white"/>
+    </svg>
+  );
+}
+
+const DETECTABLE = [
+  { name: "Perfume",       emoji: "🌸" },
+  { name: "Playing Cards", emoji: "🃏" },
+  { name: "Face Wash",     emoji: "🧴" },
+  { name: "Earbuds",       emoji: "🎧" },
+  { name: "Shampoo",       emoji: "🧴" },
+];
 
 export default function Home() {
   const [, setLocation] = useLocation();
@@ -30,47 +46,20 @@ export default function Home() {
 
   const addToCartMutation = useMutation({
     mutationFn: async (productId: string) => {
-      const response = await apiRequest("POST", "/api/cart/items", {
-        productId,
-        quantity: 1,
-      });
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.message || "Failed to add item");
-      }
-      return response.json();
+      const res = await apiRequest("POST", "/api/cart/items", { productId, quantity: 1 });
+      if (!res.ok) { const d = await res.json(); throw new Error(d.message || "Failed"); }
+      return res.json();
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/cart"] });
-      toast({
-        title: "Item Added!",
-        description: "Product successfully added to your cart",
-        className: "bg-green-50 border-green-200",
-      });
+      toast({ title: "Added to cart", className: "bg-white border border-gray-100 shadow-lg text-gray-900" });
     },
     onError: (error: any) => {
-      if (isUnauthorizedError(error)) {
-        toast({
-          title: "Session Expired",
-          description: "Please enter your mobile number again to continue",
-          variant: "destructive",
-        });
-        setTimeout(() => { window.location.href = "/"; }, 500);
-        return;
-      }
+      if (isUnauthorizedError(error)) { window.location.href = "/"; return; }
       if (error.message?.includes("already in cart")) {
-        toast({
-          title: "Already in Cart",
-          description: "This item is already in your cart.",
-          className: "bg-yellow-50 border-yellow-200",
-        });
-        return;
+        toast({ title: "Already in cart", variant: "destructive" }); return;
       }
-      toast({
-        title: "Something went wrong",
-        description: error.message || "Failed to add item. Please try again.",
-        variant: "destructive",
-      });
+      toast({ title: "Error", description: error.message, variant: "destructive" });
     },
   });
 
@@ -86,314 +75,293 @@ export default function Home() {
   };
 
   const proceedToCheckout = () => {
-    if (!cart?.items || cart.items.length === 0) {
-      toast({
-        title: "Empty Cart",
-        description: "Please add items to your cart before checkout.",
-        variant: "destructive",
-      });
-      return;
+    if (!cart?.items?.length) {
+      toast({ title: "Cart is empty", variant: "destructive" }); return;
     }
     setLocation("/checkout");
   };
 
+  const subtotal = cart?.items?.reduce((s, i) => s + parseFloat(i.product.price) * i.quantity, 0) ?? 0;
+  const tax = subtotal * 0.18;
+  const total = subtotal + tax;
+  const itemCount = cart?.items?.length ?? 0;
+
   if (cartLoading) {
     return (
-      <div className="min-h-screen modern-gradient-bg flex items-center justify-center">
-        <div className="text-center">
-          <div className="animate-spin w-12 h-12 border-4 border-green-600 border-t-transparent rounded-full mx-auto mb-4" />
-          <p className="text-gray-600 font-medium">Loading your smart cart...</p>
+      <div className="min-h-screen bg-[#fafafa] flex items-center justify-center">
+        <div className="flex flex-col items-center gap-3">
+          <div className="w-8 h-8 border-2 border-green-600 border-t-transparent rounded-full animate-spin" />
+          <span className="text-sm text-gray-400">Loading your cart…</span>
         </div>
       </div>
     );
   }
 
-  const cartTotal = cart?.items?.reduce(
-    (sum, item) => sum + parseFloat(item.product.price) * item.quantity,
-    0
-  ) || 0;
-
   return (
-    <div className="min-h-screen modern-gradient-bg">
-      {/* Header */}
-      <header className="modern-header sticky top-0 z-50">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between items-center h-16">
-            <div className="flex items-center space-x-3">
-              <div className="h-10 w-10 primary-gradient rounded-2xl flex items-center justify-center">
-                <ShoppingCart className="text-white h-5 w-5" />
-              </div>
-              <div>
-                <h1 className="text-xl font-bold text-gray-900">SmartCart</h1>
-                <p className="text-xs text-gray-500">AI-Powered Shopping</p>
-              </div>
-            </div>
+    <div className="min-h-screen bg-[#fafafa] flex flex-col">
 
-            <div className="hidden md:flex flex-1 max-w-lg mx-8">
-              <div className="relative w-full">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
-                <input
-                  type="text"
-                  placeholder="Search products..."
-                  className="w-full pl-10 pr-4 py-2 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent"
-                />
-              </div>
-            </div>
-
-            <div className="flex items-center space-x-4">
-              <div className="relative">
-                <div className="flex items-center space-x-3 bg-gray-50 rounded-full px-4 py-2 border border-gray-200">
-                  <ShoppingCart className="h-4 w-4 text-gray-600" />
-                  <div className="text-sm">
-                    <span className="font-semibold text-gray-900">{cart?.items?.length || 0}</span>
-                    <span className="text-gray-500 ml-1">items</span>
-                  </div>
-                  {cart?.items && cart.items.length > 0 && (
-                    <div className="absolute -top-1 -right-1 w-3 h-3 bg-green-500 rounded-full animate-pulse" />
-                  )}
-                </div>
-              </div>
-              <Button variant="ghost" size="sm" className="relative">
-                <Bell className="h-4 w-4 text-gray-600" />
-                <div className="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full" />
-              </Button>
-              <div className="flex items-center space-x-3">
-                <div className="text-right hidden sm:block">
-                  <p className="text-sm font-medium text-gray-900">
-                    +{(user as any)?.phoneNumber || "User"}
-                  </p>
-                  <p className="text-xs text-gray-500">Welcome back!</p>
-                </div>
-                <Button onClick={handleLogout} variant="ghost" size="sm" className="text-gray-600 hover:text-gray-900">
-                  <LogOut className="h-4 w-4" />
-                </Button>
-              </div>
-            </div>
+      {/* ── Header ── */}
+      <header className="bg-white border-b border-gray-100 px-6 h-14 flex items-center justify-between sticky top-0 z-50">
+        <div className="flex items-center gap-2.5">
+          <Logo />
+          <div>
+            <span className="text-[15px] font-semibold text-gray-900 tracking-tight leading-none">SmartCart</span>
+            <p className="text-[10px] text-gray-400 leading-none mt-0.5">AI-Powered Shopping</p>
           </div>
+        </div>
+
+        <div className="flex items-center gap-4">
+          <div className="flex items-center gap-1.5 text-sm text-gray-500">
+            <ShoppingCart className="h-3.5 w-3.5" />
+            <span className="font-medium text-gray-900">{itemCount}</span>
+            <span>items</span>
+            {itemCount > 0 && <span className="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse ml-1"></span>}
+          </div>
+          <div className="h-4 w-px bg-gray-200" />
+          <span className="text-sm text-gray-500 hidden sm:block">
+            +{(user as any)?.phoneNumber}
+          </span>
+          <button
+            onClick={handleLogout}
+            className="flex items-center gap-1.5 text-xs text-gray-400 hover:text-gray-700 transition-colors px-2 py-1.5 rounded-md hover:bg-gray-50"
+          >
+            <LogOut className="h-3.5 w-3.5" />
+            <span className="hidden sm:block">Sign out</span>
+          </button>
         </div>
       </header>
 
-      {/* Item Detector Modal */}
-      {showDetector && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <Card className="w-full max-w-lg modern-card">
-            <CardContent className="p-6">
-              <div className="flex justify-between items-center mb-4">
-                <div className="flex items-center gap-2">
-                  <Camera className="w-5 h-5 text-green-600" />
-                  <h2 className="text-xl font-semibold">AI Item Detection</h2>
+      {/* ── Body ── */}
+      <div className="flex flex-1 overflow-hidden">
+
+        {/* ── Sidebar ── */}
+        <aside className="w-72 bg-white border-r border-gray-100 flex flex-col shrink-0">
+          <div className="p-5 flex-1 overflow-y-auto">
+
+            {/* Scan button */}
+            <button
+              onClick={() => setShowDetector(true)}
+              className="w-full flex items-center justify-between px-4 py-3.5 bg-green-600 hover:bg-green-700 text-white rounded-xl transition-colors shadow-sm shadow-green-100 group"
+            >
+              <div className="flex items-center gap-3">
+                <div className="w-8 h-8 bg-white/15 rounded-lg flex items-center justify-center">
+                  <Camera className="h-4 w-4" />
+                </div>
+                <div className="text-left">
+                  <p className="text-sm font-semibold leading-none">Scan Item</p>
+                  <p className="text-[11px] text-green-100 mt-0.5 leading-none">Use AI camera</p>
                 </div>
               </div>
-              <p className="text-sm text-gray-500 mb-4">
-                Point your camera at a product — the AI will recognize it automatically.
+              <ChevronRight className="h-4 w-4 text-green-200 group-hover:translate-x-0.5 transition-transform" />
+            </button>
+
+            {/* Checkout shortcut */}
+            <button
+              onClick={proceedToCheckout}
+              disabled={!itemCount}
+              className="w-full mt-2 flex items-center justify-between px-4 py-3 border border-gray-200 hover:border-gray-300 hover:bg-gray-50 text-gray-700 rounded-xl transition-all disabled:opacity-40 disabled:cursor-not-allowed group"
+            >
+              <div className="flex items-center gap-3">
+                <div className="w-8 h-8 bg-gray-100 rounded-lg flex items-center justify-center">
+                  <CreditCard className="h-4 w-4 text-gray-500" />
+                </div>
+                <div className="text-left">
+                  <p className="text-sm font-medium leading-none">Checkout</p>
+                  <p className="text-[11px] text-gray-400 mt-0.5 leading-none">
+                    {itemCount ? `${itemCount} item${itemCount !== 1 ? "s" : ""}` : "Cart empty"}
+                  </p>
+                </div>
+              </div>
+              {itemCount > 0 && (
+                <span className="text-xs font-semibold text-gray-900">
+                  ₹{total.toLocaleString("en-IN", { maximumFractionDigits: 0 })}
+                </span>
+              )}
+            </button>
+
+            {/* Divider */}
+            <div className="my-5 border-t border-gray-100" />
+
+            {/* What AI can detect */}
+            <div>
+              <p className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-3">
+                AI Can Detect
               </p>
+              <div className="space-y-1">
+                {DETECTABLE.map((item) => (
+                  <div key={item.name} className="flex items-center gap-2.5 px-2 py-1.5 rounded-lg hover:bg-gray-50 transition-colors">
+                    <span className="text-base leading-none">{item.emoji}</span>
+                    <span className="text-sm text-gray-600">{item.name}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Divider */}
+            <div className="my-5 border-t border-gray-100" />
+
+            {/* Model info */}
+            <div className="space-y-2">
+              <p className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-3">
+                Detection Engine
+              </p>
+              <div className="flex items-center justify-between text-xs">
+                <span className="text-gray-400">Model</span>
+                <span className="font-medium text-gray-700">YOLO11s</span>
+              </div>
+              <div className="flex items-center justify-between text-xs">
+                <span className="text-gray-400">Hardware</span>
+                <span className="font-medium text-gray-700">Raspberry Pi 5</span>
+              </div>
+              <div className="flex items-center justify-between text-xs">
+                <span className="text-gray-400">Threshold</span>
+                <span className="font-medium text-gray-700">50% confidence</span>
+              </div>
+              <div className="flex items-center justify-between text-xs">
+                <span className="text-gray-400">Status</span>
+                <span className="flex items-center gap-1 font-medium text-green-600">
+                  <span className="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse"></span>
+                  Online
+                </span>
+              </div>
+            </div>
+          </div>
+        </aside>
+
+        {/* ── Cart area ── */}
+        <main className="flex-1 flex flex-col overflow-hidden">
+
+          {/* Cart header */}
+          <div className="bg-white border-b border-gray-100 px-8 py-5 flex items-center justify-between">
+            <div>
+              <h1 className="text-lg font-semibold text-gray-900 tracking-tight">Your Cart</h1>
+              <p className="text-sm text-gray-400 mt-0.5">
+                {itemCount === 0
+                  ? "No items yet — scan something to get started"
+                  : `${itemCount} item${itemCount !== 1 ? "s" : ""} detected by AI`}
+              </p>
+            </div>
+            {itemCount > 0 && (
+              <button
+                onClick={() => setShowDetector(true)}
+                className="flex items-center gap-2 text-sm text-green-600 hover:text-green-700 font-medium transition-colors px-3 py-2 rounded-lg hover:bg-green-50"
+              >
+                <Camera className="h-4 w-4" />
+                Scan another
+              </button>
+            )}
+          </div>
+
+          {/* Cart items */}
+          <div className="flex-1 overflow-y-auto px-8 py-6">
+            {!itemCount ? (
+              /* Empty state */
+              <div className="h-full flex flex-col items-center justify-center text-center max-w-xs mx-auto gap-5">
+                <div className="w-20 h-20 bg-gray-100 rounded-2xl flex items-center justify-center">
+                  <Scan className="h-9 w-9 text-gray-300" />
+                </div>
+                <div>
+                  <h3 className="text-base font-semibold text-gray-900">Cart is empty</h3>
+                  <p className="text-sm text-gray-400 mt-1 leading-relaxed">
+                    Hold a product in front of the camera. The AI detects it and adds it here automatically.
+                  </p>
+                </div>
+                <button
+                  onClick={() => setShowDetector(true)}
+                  className="flex items-center gap-2 px-5 py-2.5 bg-green-600 hover:bg-green-700 text-white text-sm font-semibold rounded-xl transition-colors shadow-sm shadow-green-100"
+                >
+                  <Camera className="h-4 w-4" />
+                  Start AI Detection
+                </button>
+              </div>
+            ) : (
+              <div className="max-w-2xl space-y-2">
+                {cart!.items.map((item) => (
+                  <CartItem
+                    key={item.id}
+                    item={item}
+                    onQuantityChange={() => {}}
+                    onRemove={() => {}}
+                  />
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* ── Checkout footer bar ── */}
+          {itemCount > 0 && (
+            <div className="bg-white border-t border-gray-100 px-8 py-4 flex items-center justify-between gap-6">
+              <div className="flex items-center gap-8 text-sm">
+                <div>
+                  <span className="text-gray-400">Subtotal</span>
+                  <span className="ml-2 font-medium text-gray-900">
+                    ₹{subtotal.toLocaleString("en-IN", { maximumFractionDigits: 0 })}
+                  </span>
+                </div>
+                <div>
+                  <span className="text-gray-400">GST (18%)</span>
+                  <span className="ml-2 font-medium text-gray-900">
+                    ₹{tax.toLocaleString("en-IN", { maximumFractionDigits: 0 })}
+                  </span>
+                </div>
+                <div className="h-4 w-px bg-gray-200" />
+                <div>
+                  <span className="text-gray-500 font-medium">Total</span>
+                  <span className="ml-2 text-lg font-bold text-gray-900">
+                    ₹{total.toLocaleString("en-IN", { maximumFractionDigits: 0 })}
+                  </span>
+                </div>
+              </div>
+              <button
+                onClick={proceedToCheckout}
+                className="flex items-center gap-2 px-6 py-2.5 bg-gray-900 hover:bg-gray-800 text-white text-sm font-semibold rounded-xl transition-colors whitespace-nowrap"
+              >
+                <CreditCard className="h-4 w-4" />
+                Pay ₹{total.toLocaleString("en-IN", { maximumFractionDigits: 0 })}
+              </button>
+            </div>
+          )}
+        </main>
+      </div>
+
+      {/* ── Scanner modal ── */}
+      {showDetector && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl w-full max-w-lg shadow-2xl overflow-hidden">
+            <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
+              <div className="flex items-center gap-2">
+                <div className="w-7 h-7 bg-green-100 rounded-lg flex items-center justify-center">
+                  <Camera className="h-4 w-4 text-green-600" />
+                </div>
+                <div>
+                  <h2 className="text-sm font-semibold text-gray-900">AI Item Detection</h2>
+                  <p className="text-xs text-gray-400">Hold product steady for 3 seconds</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setShowDetector(false)}
+                className="text-gray-400 hover:text-gray-600 transition-colors text-lg font-light leading-none px-1"
+              >
+                ✕
+              </button>
+            </div>
+            <div className="p-6">
               <ItemDetector
                 onItemDetected={handleItemDetected}
                 onClose={() => setShowDetector(false)}
               />
-            </CardContent>
-          </Card>
+            </div>
+          </div>
         </div>
       )}
 
-      {/* Main Content */}
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <div className="mb-8">
-          <h2 className="text-3xl font-bold text-gray-900 mb-2">
-            Good day, {(user as any)?.firstName || "there"}! 👋
-          </h2>
-          <p className="text-gray-600">
-            Point your camera at any product to add it to your cart automatically.
-          </p>
-        </div>
-
-        {/* Quick Stats */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
-          <Card className="modern-card p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-2xl font-bold text-gray-900">
-                  ₹{cartTotal.toLocaleString("en-IN", { minimumFractionDigits: 2 })}
-                </p>
-                <p className="text-sm text-gray-600">Cart Total</p>
-              </div>
-              <div className="w-12 h-12 bg-green-100 rounded-2xl flex items-center justify-center">
-                <CreditCard className="h-6 w-6 text-green-600" />
-              </div>
-            </div>
-          </Card>
-
-          <Card className="modern-card p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-2xl font-bold text-gray-900">{cart?.items?.length || 0}</p>
-                <p className="text-sm text-gray-600">Items Detected</p>
-              </div>
-              <div className="w-12 h-12 bg-blue-100 rounded-2xl flex items-center justify-center">
-                <Package className="h-6 w-6 text-blue-600" />
-              </div>
-            </div>
-          </Card>
-
-          <Card className="modern-card p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-2xl font-bold text-gray-900">YOLO</p>
-                <p className="text-sm text-gray-600">AI Model</p>
-              </div>
-              <div className="w-12 h-12 bg-purple-100 rounded-2xl flex items-center justify-center">
-                <TrendingUp className="h-6 w-6 text-purple-600" />
-              </div>
-            </div>
-          </Card>
-
-          <Card
-            className="modern-card p-6 cursor-pointer hover:shadow-lg transition-all duration-200"
-            onClick={() => setShowDetector(true)}
-          >
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-lg font-semibold text-gray-900">Detect Item</p>
-                <p className="text-sm text-gray-600">Use AI camera</p>
-              </div>
-              <div className="w-12 h-12 primary-gradient rounded-2xl flex items-center justify-center">
-                <Camera className="h-6 w-6 text-white" />
-              </div>
-            </div>
-          </Card>
-        </div>
-
-        {/* Main Grid */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-          {/* Left: Quick Actions */}
-          <div className="lg:col-span-1 space-y-6">
-            <Card className="modern-card">
-              <CardContent className="p-6">
-                <h3 className="text-lg font-semibold text-gray-900 mb-4">Quick Actions</h3>
-                <div className="space-y-3">
-                  <Button
-                    onClick={() => setShowDetector(true)}
-                    className="w-full justify-start h-12 bg-green-50 hover:bg-green-100 text-green-700 border border-green-200"
-                    variant="outline"
-                  >
-                    <Camera className="mr-3 h-4 w-4" />
-                    Scan Item with AI Camera
-                  </Button>
-
-                  <Button
-                    onClick={proceedToCheckout}
-                    disabled={!cart?.items || cart.items.length === 0}
-                    className="w-full justify-start h-12 primary-gradient text-white"
-                  >
-                    <CreditCard className="mr-3 h-4 w-4" />
-                    Checkout ({cart?.items?.length || 0} items)
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
-
-            {/* Supported Products */}
-            <Card className="modern-card">
-              <CardContent className="p-6">
-                <h3 className="text-lg font-semibold text-gray-900 mb-3">
-                  AI Can Detect
-                </h3>
-                <div className="space-y-2">
-                  {[
-                    { label: "Perfume", icon: "🌸" },
-                    { label: "Playing Cards", icon: "🃏" },
-                    { label: "Face Wash", icon: "🧴" },
-                    { label: "Earbuds", icon: "🎧" },
-                    { label: "Shampoo", icon: "💆" },
-                  ].map((item) => (
-                    <div key={item.label} className="flex items-center gap-2 text-sm text-gray-600">
-                      <span>{item.icon}</span>
-                      <span>{item.label}</span>
-                    </div>
-                  ))}
-                </div>
-              </CardContent>
-            </Card>
-          </div>
-
-          {/* Right: Cart */}
-          <div className="lg:col-span-2">
-            <Card className="modern-card">
-              <CardContent className="p-8">
-                <div className="flex items-center justify-between mb-6">
-                  <div className="flex items-center space-x-3">
-                    <div className="w-8 h-8 primary-gradient rounded-lg flex items-center justify-center">
-                      <ShoppingCart className="h-4 w-4 text-white" />
-                    </div>
-                    <div>
-                      <h3 className="text-xl font-semibold text-gray-900">Your Cart</h3>
-                      <p className="text-sm text-gray-500">
-                        {cart?.items?.length || 0} items detected
-                      </p>
-                    </div>
-                  </div>
-                  {cart?.items && cart.items.length > 0 && (
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => setShowDetector(true)}
-                      className="border-green-200 text-green-700 hover:bg-green-50"
-                    >
-                      <Plus className="h-4 w-4 mr-2" />
-                      Add More
-                    </Button>
-                  )}
-                </div>
-
-                <div className="space-y-4">
-                  {!cart?.items || cart.items.length === 0 ? (
-                    <div className="text-center py-12">
-                      <div className="w-20 h-20 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                        <Scan className="h-8 w-8 text-gray-400" />
-                      </div>
-                      <h4 className="text-lg font-medium text-gray-900 mb-2">Cart is empty</h4>
-                      <p className="text-gray-500 mb-6">
-                        Point your camera at a product to add it automatically using AI detection
-                      </p>
-                      <Button
-                        onClick={() => setShowDetector(true)}
-                        className="primary-gradient"
-                      >
-                        <Camera className="mr-2 h-4 w-4" />
-                        Start AI Detection
-                      </Button>
-                    </div>
-                  ) : (
-                    cart.items.map((item, index) => (
-                      <div key={item.id} className="animate-slide-up" style={{ animationDelay: `${index * 0.1}s` }}>
-                        <CartItem
-                          item={item}
-                          onQuantityChange={() => {}}
-                          onRemove={() => {}}
-                        />
-                      </div>
-                    ))
-                  )}
-                </div>
-
-                {cart && cart.items && cart.items.length > 0 && (
-                  <div className="mt-6 pt-6 border-t border-gray-200">
-                    <CartSummary cart={cart} onCheckout={proceedToCheckout} />
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-          </div>
-        </div>
-      </main>
-
-      {/* Floating Camera Button */}
-      <Button
+      {/* Floating scan button (mobile) */}
+      <button
         onClick={() => setShowDetector(true)}
-        className="fixed bottom-6 right-6 w-14 h-14 rounded-full primary-gradient shadow-2xl hover:shadow-xl transition-all duration-300 z-40"
+        className="fixed bottom-6 right-6 w-14 h-14 bg-green-600 hover:bg-green-700 text-white rounded-full shadow-xl shadow-green-200 flex items-center justify-center transition-colors z-40 lg:hidden"
       >
-        <Camera className="h-6 w-6 text-white" />
-      </Button>
+        <Camera className="h-6 w-6" />
+      </button>
     </div>
   );
 }
