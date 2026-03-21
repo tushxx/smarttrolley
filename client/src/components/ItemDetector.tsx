@@ -24,11 +24,11 @@ interface ItemDetectorProps {
   onClose: () => void;
 }
 
-// Confirm instantly if confidence ≥ this
-const HIGH_CONF  = 0.82;
-// Confirm after CONFIRM_FRAMES consecutive hits if confidence ≥ MED_CONF
-const MED_CONF   = 0.50;
-const CONFIRM_FRAMES = 2;
+// Confirm instantly if confidence ≥ this (single frame)
+const HIGH_CONF  = 0.90;
+// Confirm after CONFIRM_FRAMES *strictly consecutive* hits of the SAME class
+const MED_CONF   = 0.65;
+const CONFIRM_FRAMES = 3;
 // Capture at this size before sending — smaller = faster inference
 const CAPTURE_W  = 320;
 const CAPTURE_H  = 240;
@@ -48,7 +48,8 @@ export default function ItemDetector({ onItemDetected, onClose }: ItemDetectorPr
   const canvasRef   = useRef<HTMLCanvasElement>(null);
   const streamRef   = useRef<MediaStream | null>(null);
   const runningRef  = useRef(false);   // controls the scan loop
-  const hitsRef     = useRef<Record<string, number>>({});
+  const hitsRef       = useRef(0);          // consecutive hit count for current class
+  const lastClassRef  = useRef<string | null>(null);  // class we're currently tracking
 
   const [phase,      setPhase]      = useState<Phase>("starting");
   const [liveLabel,  setLiveLabel]  = useState<string | null>(null);
@@ -81,13 +82,22 @@ export default function ItemDetector({ onItemDetected, onClose }: ItemDetectorPr
 
   // ── Continuous scan loop — fires next frame as soon as previous returns ─────
   const scanLoop = useCallback(async () => {
-    runningRef.current = true;
-    hitsRef.current = {};
+    runningRef.current  = true;
+    hitsRef.current     = 0;
+    lastClassRef.current = null;
+
+    const reset = () => {
+      hitsRef.current      = 0;
+      lastClassRef.current = null;
+      setHitCount(0);
+      setLiveLabel(null);
+      setLiveConf(0);
+    };
 
     while (runningRef.current) {
       const frame = captureFrame();
       if (!frame) {
-        await new Promise(r => setTimeout(r, 80));  // wait for video ready
+        await new Promise(r => setTimeout(r, 80));
         continue;
       }
 
@@ -100,42 +110,51 @@ export default function ItemDetector({ onItemDetected, onClose }: ItemDetectorPr
         });
 
         if (!runningRef.current) break;
-        if (!resp.ok) continue;
+        if (!resp.ok) { reset(); continue; }
 
         const data: DetectionResult = await resp.json();
         if (!runningRef.current) break;
 
         if (data.detected && data.productFound && data.class && data.confidence) {
-          const conf = data.confidence;
-          setLiveLabel(data.class);
+          const conf      = data.confidence;
+          const cls       = data.class;
+
+          // ── Class changed → restart counter from scratch ──────────────
+          if (cls !== lastClassRef.current) {
+            hitsRef.current      = 0;
+            lastClassRef.current = cls;
+          }
+
+          setLiveLabel(cls);
           setLiveConf(Math.round(conf * 100));
 
-          // ── Instant confirm at high confidence ──────────────────────────
+          // ── Instant confirm at very high confidence (single frame) ─────
           if (conf >= HIGH_CONF) {
             confirm(data);
             return;
           }
 
-          // ── Accumulate hits at medium confidence ──────────────────────
+          // ── Accumulate strictly consecutive hits of the same class ─────
           if (conf >= MED_CONF) {
-            const prev = hitsRef.current[data.class] || 0;
-            hitsRef.current[data.class] = prev + 1;
-            setHitCount(hitsRef.current[data.class]);
-            if (hitsRef.current[data.class] >= CONFIRM_FRAMES) {
+            hitsRef.current += 1;
+            setHitCount(hitsRef.current);
+            if (hitsRef.current >= CONFIRM_FRAMES) {
               confirm(data);
               return;
             }
+          } else {
+            // Confidence dropped below medium — reset this class's streak
+            hitsRef.current = 0;
+            setHitCount(0);
           }
+
         } else {
-          // No detection — reset counters
-          hitsRef.current = {};
-          setHitCount(0);
-          setLiveLabel(null);
-          setLiveConf(0);
+          // Nothing detected — full reset, different item or no item
+          reset();
         }
       } catch {
-        // network error / timeout — just retry immediately
         if (!runningRef.current) break;
+        // network error — keep going, don't reset streak
       }
     }
   }, [captureFrame, confirm]);
@@ -176,7 +195,8 @@ export default function ItemDetector({ onItemDetected, onClose }: ItemDetectorPr
   const handleRescan = useCallback(async () => {
     runningRef.current = false;
     streamRef.current?.getTracks().forEach(t => t.stop());
-    hitsRef.current = {};
+    hitsRef.current = 0;
+    lastClassRef.current = null;
     setConfirmed(null);
     setLiveLabel(null);
     setLiveConf(0);

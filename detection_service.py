@@ -88,7 +88,7 @@ MODEL_PATHS = [
 ]
 
 INFERENCE_SIZE = 320        # px — smaller = faster, still accurate
-CONFIDENCE_THRESHOLD = 0.50
+CONFIDENCE_THRESHOLD = 0.62   # raise floor — eliminates weak ghost detections
 
 
 def load_model():
