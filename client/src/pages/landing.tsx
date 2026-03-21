@@ -77,14 +77,6 @@ export default function Landing() {
   return (
     <div className="min-h-screen bg-white flex flex-col">
       {/* ── Nav ── */}
-      <nav className="flex items-center justify-between px-8 py-5 border-b border-gray-100">
-        <a href="/" className="flex items-center gap-2.5">
-          <Logo />
-          <span className="text-[17px] font-semibold text-gray-900 tracking-tight">
-            SmartCart
-          </span>
-        </a>
-      </nav>
 
       {/* ── Hero ── */}
       <main className="flex-1 flex flex-col items-center justify-center px-6 py-20 text-center">

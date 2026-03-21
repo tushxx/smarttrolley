@@ -2,6 +2,10 @@
 YOLO Item Detection Service
 Runs on port 8001, receives base64 image frames from the Express server,
 runs inference using the trained YOLO model, and returns detected class names.
+Optimised for low-latency inference:
+  - Threaded Flask (no request queuing)
+  - Image resized to 320x320 before inference
+  - Model warmed up on startup (eliminates first-request lag)
 """
 
 import sys
@@ -9,7 +13,6 @@ import os
 import base64
 import io
 import subprocess
-import json
 import traceback
 from pathlib import Path
 
@@ -22,7 +25,6 @@ def _pip_install(*packages):
     return result.returncode == 0, result.stderr[-500:]
 
 def _ensure_ultralytics():
-    # 1. Try importing ultralytics directly
     try:
         import cv2  # noqa: F401
         import ultralytics  # noqa: F401
@@ -30,14 +32,12 @@ def _ensure_ultralytics():
     except ImportError:
         pass
     except Exception as e:
-        # cv2 might be importable but missing libGL — install headless variant
         if "libGL" in str(e) or "libGL" in repr(e):
             print("[INFO] OpenCV needs headless variant — installing opencv-python-headless...")
             ok, err = _pip_install("opencv-python-headless")
             if not ok:
                 print(f"[WARN] headless OpenCV install failed: {err}")
 
-    # 2. Try installing ultralytics
     try:
         import ultralytics  # noqa: F401
         return True
@@ -46,7 +46,6 @@ def _ensure_ultralytics():
 
     ok, err = _pip_install("ultralytics")
     if ok:
-        # After install, cv2 might still use GPU; try headless
         try:
             import cv2  # noqa: F401
         except Exception as e2:
@@ -88,31 +87,43 @@ MODEL_PATHS = [
     "model.pt",
 ]
 
+INFERENCE_SIZE = 320        # px — smaller = faster, still accurate
+CONFIDENCE_THRESHOLD = 0.50
+
+
 def load_model():
     global model, MODEL_LOADED
     if not ULTRALYTICS_OK:
-        print("[WARN] ultralytics unavailable. Detection will return empty results.")
+        print("[WARN] ultralytics unavailable.")
         return
     try:
         from ultralytics import YOLO
+        import numpy as np
         for path in MODEL_PATHS:
             if os.path.exists(path):
                 print(f"[INFO] Loading YOLO model from: {path}")
                 model = YOLO(path)
                 MODEL_LOADED = True
                 print(f"[INFO] ✅ Model loaded. Classes: {model.names}")
+
+                # ── Warmup: run one blank inference to JIT-compile the model ──
+                print("[INFO] Warming up model…")
+                dummy = Image.fromarray(
+                    __import__("numpy").zeros((INFERENCE_SIZE, INFERENCE_SIZE, 3), dtype="uint8")
+                )
+                model(dummy, verbose=False, imgsz=INFERENCE_SIZE)
+                print("[INFO] ✅ Model warm — first real inference will be fast")
                 return
         print("[WARN] No model file found. Looked for:", MODEL_PATHS)
     except Exception as e:
         print(f"[ERROR] Failed to load model: {e}")
         traceback.print_exc()
 
+
 load_model()
 
-# ── Flask app ─────────────────────────────────────────────────────────────────
+# ── Flask app (threaded=True → concurrent requests, no queuing) ─────────────
 app = Flask(__name__)
-
-CONFIDENCE_THRESHOLD = 0.50  # 50% minimum confidence
 
 
 @app.route("/health", methods=["GET"])
@@ -121,6 +132,7 @@ def health():
         "status": "ok",
         "model_loaded": MODEL_LOADED,
         "ultralytics_ok": ULTRALYTICS_OK,
+        "inference_size": INFERENCE_SIZE,
         "model_classes": list(model.names.values()) if MODEL_LOADED else [],
     })
 
@@ -134,7 +146,7 @@ def detect():
     if not data or "image" not in data:
         return jsonify({"error": "No image in request body"}), 400
 
-    # Decode base64 → PIL Image
+    # ── Decode base64 → PIL Image ─────────────────────────────────────────────
     try:
         img_data = data["image"]
         if "," in img_data:
@@ -144,16 +156,20 @@ def detect():
     except Exception as e:
         return jsonify({"error": f"Invalid image data: {e}"}), 400
 
-    if not MODEL_LOADED or model is None:
-        return jsonify({"detected": False, "message": "Model not loaded — ultralytics may still be installing"})
+    # ── Resize to inference size for speed ────────────────────────────────────
+    if image.width > INFERENCE_SIZE or image.height > INFERENCE_SIZE:
+        image = image.resize((INFERENCE_SIZE, INFERENCE_SIZE), Image.BILINEAR)
 
-    # Run YOLO inference
+    if not MODEL_LOADED or model is None:
+        return jsonify({"detected": False, "message": "Model not loaded"})
+
+    # ── YOLO inference ────────────────────────────────────────────────────────
     try:
-        results = model(image, verbose=False)
+        results = model(image, verbose=False, imgsz=INFERENCE_SIZE)
     except Exception as e:
         return jsonify({"error": f"Inference failed: {e}"}), 500
 
-    # Parse detections
+    # ── Parse detections ──────────────────────────────────────────────────────
     all_detections = []
     for result in results:
         boxes = result.boxes
@@ -185,4 +201,5 @@ def detect():
 if __name__ == "__main__":
     port = int(os.environ.get("DETECTION_PORT", 8001))
     print(f"[INFO] 🚀 Detection service starting on port {port}")
-    app.run(host="0.0.0.0", port=port, debug=False)
+    # threaded=True: each request handled in its own thread → no blocking
+    app.run(host="0.0.0.0", port=port, debug=False, threaded=True)
