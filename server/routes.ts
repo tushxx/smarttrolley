@@ -191,6 +191,72 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // ── IoT Hardware Endpoint ────────────────────────────────────────────────────
+  // Called by the Raspberry Pi PIR + camera script (no browser session needed).
+  // The Pi authenticates with a shared secret and its configured phone number.
+  app.post('/api/iot/detect', async (req, res) => {
+    try {
+      const { iot_secret, phone_number, detection_class, confidence } = req.body;
+
+      // Verify the shared secret (set IOT_SECRET in environment)
+      const expectedSecret = process.env.IOT_SECRET || "smarttrolley_iot_2024";
+      if (iot_secret !== expectedSecret) {
+        return res.status(401).json({ message: "Invalid IoT secret" });
+      }
+
+      if (!phone_number || !detection_class) {
+        return res.status(400).json({ message: "phone_number and detection_class are required" });
+      }
+
+      // Find the user by phone number (same pattern as phone auth)
+      const cleaned = String(phone_number).replace(/\D/g, "");
+      const userId = `phone:${cleaned}`;
+      const user = await storage.getUser(userId);
+      if (!user) {
+        return res.status(404).json({ message: `No active session for phone ${cleaned}. Log in on the iPad first.` });
+      }
+
+      // Look up product by detection class
+      const product = await storage.getProductByDetectionClass(detection_class);
+      if (!product) {
+        return res.status(404).json({ message: `No product mapped to class "${detection_class}"` });
+      }
+
+      // Get or create cart
+      let cart = await storage.getActiveCart(userId);
+      if (!cart) {
+        const newCart = await storage.createCart(userId);
+        cart = await storage.getCartWithItems(newCart.id);
+      }
+
+      // Check if already in cart
+      const existing = cart?.items?.find(i => i.productId === product.id);
+      if (existing) {
+        return res.status(200).json({
+          success: true,
+          alreadyInCart: true,
+          message: `${product.name} already in cart`,
+          product,
+        });
+      }
+
+      // Add to cart
+      await storage.addItemToCart(cart!.id, { productId: product.id, quantity: 1 });
+
+      console.log(`[IoT] PIR detection: ${detection_class} (${Math.round((confidence || 0) * 100)}%) → added "${product.name}" to cart of ${cleaned}`);
+
+      res.json({
+        success: true,
+        alreadyInCart: false,
+        message: `Added ${product.name} to cart`,
+        product,
+      });
+    } catch (error: any) {
+      console.error("[IoT] Error:", error.message);
+      res.status(500).json({ message: "IoT detection failed: " + error.message });
+    }
+  });
+
   // ── Payments ────────────────────────────────────────────────────────────────
   app.post("/api/create-razorpay-order", isAuthenticated, async (req: any, res) => {
     try {

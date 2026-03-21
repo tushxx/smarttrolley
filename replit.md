@@ -59,10 +59,16 @@ Preferred communication style: Simple, everyday language.
 - **Provider**: Razorpay (INR)
 - **Flow**: Order created → Razorpay payment intent → client confirmation → order status update
 
-## IoT Integration (Future)
-- MQTT topic: `cart/+/item_detected` with `detection_class` field
-- AWS IoT core via environment secrets
-- Raspberry Pi 5 + camera → weight sensor dual-auth → iPad as screen
+## IoT Integration (PIR Sensor — IMPLEMENTED)
+- **Script**: `pi_sensor.py` — standalone Python script for the Pi
+- **Flow**: PIR sensor (GPIO17) → picamera2 frames → local Flask YOLO → confirmed → POST `/api/iot/detect` → item added to user's cart
+- **Auth**: Shared `IOT_SECRET` env var (default: `smarttrolley_iot_2024`) + phone number (no browser session needed)
+- **Endpoint**: `POST /api/iot/detect` — accepts `{ iot_secret, phone_number, detection_class, confidence }`
+- **Smart logic**: Same thresholds as frontend (HIGH_CONF=0.90, MED_CONF=0.65, CONFIRM_FRAMES=3)
+- **Wiring**: PIR OUT → GPIO17 BCM; Pi camera → CSI ribbon
+- **Pi install**: `pip install RPi.GPIO picamera2 requests pillow`
+- **Run**: `SMARTCART_PHONE=9876543210 python3 pi_sensor.py`
+- **Demo mode**: Script auto-detects missing GPIO and runs a server connectivity test instead
 
 # External Dependencies
 
