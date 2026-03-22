@@ -5,24 +5,23 @@ import * as schema from "@shared/schema";
 
 neonConfig.webSocketConstructor = ws;
 
-function getConnectionString(): string {
+function getConnectionString(): string | null {
   const { PGHOST, PGUSER, PGPASSWORD, PGDATABASE, PGPORT } = process.env;
 
-  // Prefer building from individual vars (always fresh from Replit)
   if (PGHOST && PGUSER && PGPASSWORD && PGDATABASE) {
     const port = PGPORT || '5432';
     const encoded = encodeURIComponent(PGPASSWORD);
     return `postgresql://${PGUSER}:${encoded}@${PGHOST}:${port}/${PGDATABASE}?sslmode=require`;
   }
 
-  // Fall back to DATABASE_URL
   if (process.env.DATABASE_URL) return process.env.DATABASE_URL;
 
-  throw new Error(
-    "Database credentials not found. Set PGHOST, PGUSER, PGPASSWORD, PGDATABASE or DATABASE_URL."
-  );
+  return null;  // no credentials — caller will use in-memory storage instead
 }
 
 const connectionString = getConnectionString();
-export const pool = new Pool({ connectionString });
-export const db = drizzle({ client: pool, schema });
+
+// db and pool are null when no credentials are configured.
+// storage.ts checks for this and falls back to MemStorage automatically.
+export const pool = connectionString ? new Pool({ connectionString }) : null;
+export const db   = connectionString ? drizzle({ client: pool!, schema }) : null;

@@ -140,68 +140,69 @@ class MemStorage implements IStorage {
 
 // ── Database storage ──────────────────────────────────────────────────────────
 export class DatabaseStorage implements IStorage {
-  async getUser(id: string)                { const [u] = await db.select().from(users).where(eq(users.id, id)); return u; }
+  // db is guaranteed non-null here — createStorage() only instantiates this class when db !== null
+  async getUser(id: string)                { const [u] = await db!.select().from(users).where(eq(users.id, id)); return u; }
   async upsertUser(userData: UpsertUser) {
-    const [u] = await db.insert(users).values(userData).onConflictDoUpdate({ target: users.id, set: { ...userData, updatedAt: new Date() } }).returning();
+    const [u] = await db!.insert(users).values(userData).onConflictDoUpdate({ target: users.id, set: { ...userData, updatedAt: new Date() } }).returning();
     return u;
   }
   async updateUserRazorpayInfo(userId: string, razorpayCustomerId: string) {
-    const [u] = await db.update(users).set({ razorpayCustomerId, updatedAt: new Date() }).where(eq(users.id, userId)).returning();
+    const [u] = await db!.update(users).set({ razorpayCustomerId, updatedAt: new Date() }).where(eq(users.id, userId)).returning();
     return u;
   }
   async getProductByDetectionClass(detectionClass: string) {
     const { ilike } = await import("drizzle-orm");
-    const [p] = await db.select().from(products).where(ilike(products.detectionClass, detectionClass));
+    const [p] = await db!.select().from(products).where(ilike(products.detectionClass, detectionClass));
     return p;
   }
   async createProduct(product: InsertProduct) {
-    const [p] = await db.insert(products).values(product).returning();
+    const [p] = await db!.insert(products).values(product).returning();
     return p;
   }
-  async getAllProducts() { return db.select().from(products); }
+  async getAllProducts() { return db!.select().from(products); }
   async getActiveCart(userId: string) {
-    const [cart] = await db.select().from(shoppingCarts).where(and(eq(shoppingCarts.userId, userId), eq(shoppingCarts.status, "active"))).orderBy(desc(shoppingCarts.createdAt));
+    const [cart] = await db!.select().from(shoppingCarts).where(and(eq(shoppingCarts.userId, userId), eq(shoppingCarts.status, "active"))).orderBy(desc(shoppingCarts.createdAt));
     if (!cart) return undefined;
     return this.getCartWithItems(cart.id);
   }
   async createCart(userId: string) {
-    const [cart] = await db.insert(shoppingCarts).values({ userId, status: "active" }).returning();
+    const [cart] = await db!.insert(shoppingCarts).values({ userId, status: "active" }).returning();
     return cart;
   }
   async addItemToCart(cartId: string, item: InsertCartItem) {
-    const [existing] = await db.select().from(cartItems).where(and(eq(cartItems.cartId, cartId), eq(cartItems.productId, item.productId)));
+    const [existing] = await db!.select().from(cartItems).where(and(eq(cartItems.cartId, cartId), eq(cartItems.productId, item.productId)));
     if (existing) {
-      const [u] = await db.update(cartItems).set({ quantity: existing.quantity + (item.quantity || 1) }).where(eq(cartItems.id, existing.id)).returning();
+      const [u] = await db!.update(cartItems).set({ quantity: existing.quantity + (item.quantity || 1) }).where(eq(cartItems.id, existing.id)).returning();
       return u;
     }
-    const [n] = await db.insert(cartItems).values({ ...item, cartId }).returning();
+    const [n] = await db!.insert(cartItems).values({ ...item, cartId }).returning();
     return n;
   }
   async updateCartItemQuantity(cartItemId: string, quantity: number) {
-    const [u] = await db.update(cartItems).set({ quantity }).where(eq(cartItems.id, cartItemId)).returning();
+    const [u] = await db!.update(cartItems).set({ quantity }).where(eq(cartItems.id, cartItemId)).returning();
     return u;
   }
-  async removeCartItem(cartItemId: string) { await db.delete(cartItems).where(eq(cartItems.id, cartItemId)); }
+  async removeCartItem(cartItemId: string) { await db!.delete(cartItems).where(eq(cartItems.id, cartItemId)); }
   async getCartWithItems(cartId: string): Promise<CartWithItems | undefined> {
-    const [cart] = await db.select().from(shoppingCarts).where(eq(shoppingCarts.id, cartId));
+    const [cart] = await db!.select().from(shoppingCarts).where(eq(shoppingCarts.id, cartId));
     if (!cart) return undefined;
-    const items = await db.select({ id: cartItems.id, cartId: cartItems.cartId, productId: cartItems.productId, quantity: cartItems.quantity, detectedAt: cartItems.detectedAt, product: products })
+    const items = await db!.select({ id: cartItems.id, cartId: cartItems.cartId, productId: cartItems.productId, quantity: cartItems.quantity, detectedAt: cartItems.detectedAt, product: products })
       .from(cartItems).leftJoin(products, eq(cartItems.productId, products.id)).where(eq(cartItems.cartId, cartId));
     return { ...cart, items: items as CartItemWithProduct[] };
   }
   async createOrder(userId: string, cartId: string, orderData: InsertOrder) {
-    const [o] = await db.insert(orders).values({ ...orderData, userId, cartId }).returning();
+    const [o] = await db!.insert(orders).values({ ...orderData, userId, cartId }).returning();
     return o;
   }
   async updateOrderStatus(orderId: string, status: string, razorpayOrderId?: string, razorpayPaymentId?: string) {
     const data: any = { status, updatedAt: new Date() };
     if (razorpayOrderId) data.razorpayOrderId = razorpayOrderId;
     if (razorpayPaymentId) data.razorpayPaymentId = razorpayPaymentId;
-    const [o] = await db.update(orders).set(data).where(eq(orders.id, orderId)).returning();
+    const [o] = await db!.update(orders).set(data).where(eq(orders.id, orderId)).returning();
     return o;
   }
   async getUserOrders(userId: string) {
-    return db.select().from(orders).where(eq(orders.userId, userId)).orderBy(desc(orders.createdAt));
+    return db!.select().from(orders).where(eq(orders.userId, userId)).orderBy(desc(orders.createdAt));
   }
 }
 
@@ -209,9 +210,16 @@ export class DatabaseStorage implements IStorage {
 let _storage: IStorage;
 
 async function createStorage(): Promise<IStorage> {
+  // If no database credentials are configured, skip DB entirely
+  if (!db) {
+    console.warn("⚠️  No database credentials found — using in-memory storage.");
+    console.warn("   Cart data will reset on server restart.");
+    console.warn("   Products are pre-seeded for YOLO detection testing.");
+    return new MemStorage();
+  }
+
   try {
     const dbStorage = new DatabaseStorage();
-    // Quick connectivity test
     await dbStorage.getAllProducts();
     console.log("✅ Using PostgreSQL database storage");
     return dbStorage;

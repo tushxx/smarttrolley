@@ -15,11 +15,16 @@ async function withRetry<T>(fn: () => Promise<T>, retries = 3, delayMs = 2000): 
 }
 
 export async function initializeDatabase() {
+  if (!db) {
+    console.log('ℹ️  No database credentials — skipping DB init, using in-memory storage.');
+    return;
+  }
+
   try {
     console.log('🔄 Setting up database tables...');
 
     // Users table
-    await withRetry(() => db.execute(sql`
+    await withRetry(() => db!.execute(sql`
       SELECT 1
     `));  // warm up connection first
 
