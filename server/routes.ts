@@ -6,10 +6,16 @@ import { setupAuth, isAuthenticated } from "./auth";
 import { insertCartItemSchema } from "@shared/schema";
 import { z } from "zod";
 
-const razorpay = new Razorpay({
-  key_id: process.env.RAZORPAY_KEY_ID || '',
-  key_secret: process.env.RAZORPAY_KEY_SECRET || '',
-});
+// Razorpay is initialized lazily — only when a payment is attempted.
+// This prevents a crash at startup when keys are not configured locally.
+function getRazorpay() {
+  const key_id = process.env.RAZORPAY_KEY_ID;
+  const key_secret = process.env.RAZORPAY_KEY_SECRET;
+  if (!key_id || !key_secret) {
+    throw new Error("Razorpay keys not configured. Add RAZORPAY_KEY_ID and RAZORPAY_KEY_SECRET to your .env file.");
+  }
+  return new Razorpay({ key_id, key_secret });
+}
 
 const DETECTION_SERVICE_URL = "http://127.0.0.1:8001";
 
@@ -279,7 +285,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         total: total.toFixed(2),
       });
 
-      const razorpayOrder = await razorpay.orders.create({
+      const razorpayOrder = await getRazorpay().orders.create({
         amount: Math.round(total * 100),
         currency: "INR",
         receipt: order.id,
