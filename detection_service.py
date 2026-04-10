@@ -1,11 +1,17 @@
 """
-YOLO Item Detection Service
-Runs on port 8001, receives base64 image frames from the Express server,
-runs inference using the trained YOLO model, and returns detected class names.
-Optimised for low-latency inference:
-  - Threaded Flask (no request queuing)
-  - Image resized to 320x320 before inference
-  - Model warmed up on startup (eliminates first-request lag)
+YOLO Item Detection Service — with Pi Camera streaming
+=======================================================
+Runs on port 8001.
+
+Architecture:
+─────────────
+• A single background thread opens the Pi camera ONCE and continuously
+  captures frames, compressing each to JPEG and storing it in
+  `_latest_jpeg` (bytes). This avoids any re-open / lock-contention issues.
+• GET /stream   — MJPEG multipart stream served directly from `_latest_jpeg`
+• GET /capture  — Returns latest frame as base64 JSON for YOLO detection
+• POST /detect  — Receives a base64 image and runs YOLO inference
+• GET /health   — Service health status
 """
 
 import sys
@@ -14,6 +20,8 @@ import base64
 import io
 import subprocess
 import traceback
+import threading
+import time
 from pathlib import Path
 
 # ── Auto-install ultralytics if missing ──────────────────────────────────────
@@ -69,71 +77,6 @@ except ImportError:
     print("[ERROR] Flask not installed.")
     sys.exit(1)
 
-# ── Pi Camera Setup ──────────────────────────────────────────────────────────
-import threading
-import time
-
-camera_lock  = threading.Lock()
-_pi_camera   = None   # picamera2 instance
-_cv_camera   = None   # OpenCV VideoCapture fallback
-_cam_mode    = None   # "picamera2" | "opencv" | None
-
-def _init_camera():
-    global _pi_camera, _cv_camera, _cam_mode
-    # Try picamera2 first (native Pi camera)
-    try:
-        from picamera2 import Picamera2
-        cam = Picamera2()
-        config = cam.create_video_configuration(
-            main={"size": (640, 480), "format": "RGB888"}
-        )
-        cam.configure(config)
-        cam.start()
-        time.sleep(0.5)  # warm-up
-        _pi_camera = cam
-        _cam_mode  = "picamera2"
-        print("[INFO] ✅ Pi camera initialised via picamera2")
-        return
-    except Exception as e:
-        print(f"[INFO] picamera2 unavailable ({e}), trying OpenCV…")
-
-    # Fallback: OpenCV VideoCapture (USB or CSI with v4l2)
-    try:
-        import cv2
-        cap = cv2.VideoCapture(0)
-        if cap.isOpened():
-            cap.set(cv2.CAP_PROP_FRAME_WIDTH,  640)
-            cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
-            _cv_camera = cap
-            _cam_mode  = "opencv"
-            print("[INFO] ✅ Pi camera initialised via OpenCV VideoCapture")
-            return
-    except Exception as e2:
-        print(f"[WARN] OpenCV camera also unavailable: {e2}")
-
-    print("[WARN] No Pi camera found — /stream and /capture will return errors.")
-
-_init_camera()
-
-def _capture_frame_jpeg(quality: int = 80):
-    """Capture one frame from the Pi camera and return raw JPEG bytes."""
-    with camera_lock:
-        if _cam_mode == "picamera2":
-            import numpy as np, cv2
-            frame = _pi_camera.capture_array()
-            # picamera2 gives RGB — convert to BGR for cv2.imencode
-            bgr = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
-            ok, buf = cv2.imencode(".jpg", bgr, [cv2.IMWRITE_JPEG_QUALITY, quality])
-            return bytes(buf) if ok else None
-        elif _cam_mode == "opencv":
-            import cv2
-            ok, frame = _cv_camera.read()
-            if not ok:
-                return None
-            ok2, buf = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, quality])
-            return bytes(buf) if ok2 else None
-    return None
-
 # ── PIL ──────────────────────────────────────────────────────────────────────
 try:
     from PIL import Image
@@ -152,8 +95,8 @@ MODEL_PATHS = [
     "model.pt",
 ]
 
-INFERENCE_SIZE = 320        # px — smaller = faster, still accurate
-CONFIDENCE_THRESHOLD = 0.62   # raise floor — eliminates weak ghost detections
+INFERENCE_SIZE = 320
+CONFIDENCE_THRESHOLD = 0.62
 
 
 def load_model():
@@ -171,7 +114,7 @@ def load_model():
                 MODEL_LOADED = True
                 print(f"[INFO] ✅ Model loaded. Classes: {model.names}")
 
-                # ── Warmup: run one blank inference to JIT-compile the model ──
+                # Warmup
                 print("[INFO] Warming up model…")
                 dummy = Image.fromarray(
                     __import__("numpy").zeros((INFERENCE_SIZE, INFERENCE_SIZE, 3), dtype="uint8")
@@ -187,14 +130,137 @@ def load_model():
 
 load_model()
 
-# ── Flask app (threaded=True → concurrent requests, no queuing) ─────────────
+# ── Flask app ────────────────────────────────────────────────────────────────
 app = Flask(__name__)
 
+# ──────────────────────────────────────────────────────────────────────────────
+#  Pi Camera — single background capture thread
+#  One thread opens picamera2/OpenCV ONCE and continuously reads frames.
+#  Latest JPEG bytes are stored in _latest_jpeg. No re-opening, no locking per-request.
+# ──────────────────────────────────────────────────────────────────────────────
+_latest_jpeg: bytes = b""          # latest compressed frame
+_frame_event  = threading.Event()  # set whenever a new frame is available
+_cam_mode: str = "none"            # "picamera2" | "opencv" | "none"
+_cam_ok: bool  = False
 
+
+def _camera_thread():
+    """Background thread: opens camera once and pushes frames continuously."""
+    global _latest_jpeg, _cam_mode, _cam_ok
+
+    # ── Try picamera2 first ──────────────────────────────────────────────────
+    try:
+        from picamera2 import Picamera2
+        import cv2
+
+        cam = Picamera2()
+        cfg = cam.create_video_configuration(
+            main={"size": (640, 480), "format": "RGB888"},
+            controls={"FrameDurationLimits": (33333, 33333)},  # ~30 fps
+        )
+        cam.configure(cfg)
+        cam.start()
+        time.sleep(1.0)   # let AE/AWB settle
+
+        _cam_mode = "picamera2"
+        _cam_ok   = True
+        print("[CAM] ✅ picamera2 running")
+
+        while True:
+            try:
+                rgb   = cam.capture_array()
+                bgr   = cv2.cvtColor(rgb, cv2.COLOR_RGB2BGR)
+                ok, buf = cv2.imencode(".jpg", bgr, [cv2.IMWRITE_JPEG_QUALITY, 70])
+                if ok:
+                    _latest_jpeg = bytes(buf)
+                    _frame_event.set()
+                    _frame_event.clear()
+            except Exception as inner:
+                print(f"[CAM] picamera2 capture error: {inner}")
+                time.sleep(0.1)
+
+    except Exception as e:
+        print(f"[CAM] picamera2 unavailable: {e} — trying OpenCV…")
+
+    # ── Fallback: OpenCV VideoCapture ────────────────────────────────────────
+    try:
+        import cv2
+
+        for idx in range(4):
+            cap = cv2.VideoCapture(idx)
+            if cap.isOpened():
+                cap.set(cv2.CAP_PROP_FRAME_WIDTH,  640)
+                cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
+                cap.set(cv2.CAP_PROP_FPS, 30)
+                _cam_mode = "opencv"
+                _cam_ok   = True
+                print(f"[CAM] ✅ OpenCV VideoCapture on /dev/video{idx}")
+                break
+        else:
+            print("[CAM] ❌ No camera device found.")
+            return
+
+        while True:
+            ok, frame = cap.read()
+            if ok:
+                _, buf = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, 70])
+                _latest_jpeg = bytes(buf)
+                _frame_event.set()
+                _frame_event.clear()
+            else:
+                time.sleep(0.05)
+
+    except Exception as e2:
+        print(f"[CAM] OpenCV also failed: {e2}")
+        _cam_ok = False
+
+
+# Start background capture thread on service startup
+_t = threading.Thread(target=_camera_thread, daemon=True)
+_t.start()
+# Give the camera ~2s to initialise before Flask starts serving
+time.sleep(2.0)
+
+
+# ── MJPEG stream ────────────────────────────────────────────────────────────
+def _mjpeg_gen():
+    """Yield MJPEG multipart frames from the shared buffer."""
+    while True:
+        jpeg = _latest_jpeg
+        if jpeg:
+            yield (
+                b"--frame\r\n"
+                b"Content-Type: image/jpeg\r\n\r\n" + jpeg + b"\r\n"
+            )
+        time.sleep(0.033)   # ~30 fps cap for clients
+
+
+@app.route("/stream", methods=["GET"])
+def stream():
+    if not _cam_ok:
+        return jsonify({"error": "Pi camera not available"}), 503
+    return Response(
+        stream_with_context(_mjpeg_gen()),
+        mimetype="multipart/x-mixed-replace; boundary=frame"
+    )
+
+
+@app.route("/capture", methods=["GET"])
+def capture():
+    """Return latest frame as base64 JSON for YOLO detection."""
+    if not _cam_ok or not _latest_jpeg:
+        return jsonify({"error": "Pi camera not ready"}), 503
+    b64 = base64.b64encode(_latest_jpeg).decode()
+    return jsonify({"image": f"data:image/jpeg;base64,{b64}"})
+
+
+# ── Health ───────────────────────────────────────────────────────────────────
 @app.route("/health", methods=["GET"])
 def health():
     return jsonify({
         "status": "ok",
+        "cam_mode": _cam_mode,
+        "cam_ok": _cam_ok,
         "model_loaded": MODEL_LOADED,
         "ultralytics_ok": ULTRALYTICS_OK,
         "inference_size": INFERENCE_SIZE,
@@ -202,6 +268,7 @@ def health():
     })
 
 
+# ── YOLO Detection ────────────────────────────────────────────────────────────
 @app.route("/detect", methods=["POST"])
 def detect():
     if not PIL_OK:
@@ -211,7 +278,7 @@ def detect():
     if not data or "image" not in data:
         return jsonify({"error": "No image in request body"}), 400
 
-    # ── Decode base64 → PIL Image ─────────────────────────────────────────────
+    # Decode base64 → PIL Image
     try:
         img_data = data["image"]
         if "," in img_data:
@@ -221,34 +288,31 @@ def detect():
     except Exception as e:
         return jsonify({"error": f"Invalid image data: {e}"}), 400
 
-    # ── Resize to inference size for speed ────────────────────────────────────
     if image.width > INFERENCE_SIZE or image.height > INFERENCE_SIZE:
         image = image.resize((INFERENCE_SIZE, INFERENCE_SIZE), Image.BILINEAR)
 
     if not MODEL_LOADED or model is None:
         return jsonify({"detected": False, "message": "Model not loaded"})
 
-    # ── YOLO inference ────────────────────────────────────────────────────────
     try:
         results = model(image, verbose=False, imgsz=INFERENCE_SIZE)
     except Exception as e:
         return jsonify({"error": f"Inference failed: {e}"}), 500
 
-    # ── Parse detections ──────────────────────────────────────────────────────
     all_detections = []
     for result in results:
         boxes = result.boxes
         if boxes is None:
             continue
         for box in boxes:
-            conf = float(box.conf[0])
-            cls_id = int(box.cls[0])
+            conf    = float(box.conf[0])
+            cls_id  = int(box.cls[0])
             cls_name = model.names.get(cls_id, str(cls_id))
             if conf >= CONFIDENCE_THRESHOLD:
                 all_detections.append({
-                    "class": cls_name,
+                    "class":      cls_name,
                     "confidence": round(conf, 3),
-                    "class_id": cls_id,
+                    "class_id":   cls_id,
                 })
 
     if not all_detections:
@@ -256,53 +320,14 @@ def detect():
 
     best = max(all_detections, key=lambda d: d["confidence"])
     return jsonify({
-        "detected": True,
-        "class": best["class"],
-        "confidence": best["confidence"],
+        "detected":       True,
+        "class":          best["class"],
+        "confidence":     best["confidence"],
         "all_detections": all_detections,
     })
-
-
-# ── Pi Camera Streaming Endpoints ────────────────────────────────────────────
-
-@app.route("/capture", methods=["GET"])
-def capture():
-    """Return a single JPEG frame as base64 JSON for YOLO detection."""
-    if _cam_mode is None:
-        return jsonify({"error": "No Pi camera available"}), 503
-    jpeg = _capture_frame_jpeg(quality=70)
-    if jpeg is None:
-        return jsonify({"error": "Failed to capture frame"}), 500
-    b64 = base64.b64encode(jpeg).decode()
-    return jsonify({"image": f"data:image/jpeg;base64,{b64}"})
-
-
-def _mjpeg_generator():
-    """Yield MJPEG multipart frames continuously."""
-    while True:
-        jpeg = _capture_frame_jpeg(quality=60)
-        if jpeg:
-            yield (
-                b"--frame\r\n"
-                b"Content-Type: image/jpeg\r\n\r\n" + jpeg + b"\r\n"
-            )
-        else:
-            time.sleep(0.05)
-
-
-@app.route("/stream", methods=["GET"])
-def stream():
-    """MJPEG live stream from the Pi camera."""
-    if _cam_mode is None:
-        return jsonify({"error": "No Pi camera available"}), 503
-    return Response(
-        stream_with_context(_mjpeg_generator()),
-        mimetype="multipart/x-mixed-replace; boundary=frame"
-    )
 
 
 if __name__ == "__main__":
     port = int(os.environ.get("DETECTION_PORT", 8001))
     print(f"[INFO] 🚀 Detection service starting on port {port}")
-    # threaded=True: each request handled in its own thread → no blocking
     app.run(host="0.0.0.0", port=port, debug=False, threaded=True)
