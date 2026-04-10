@@ -87,10 +87,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // ── Pi Camera Stream (MJPEG proxy) ──────────────────────────────────────────
   // Proxies the MJPEG stream from detection_service.py to the browser so the
   // website shows the physical Raspberry Pi camera feed during scanning.
-  app.get('/api/pi-stream', isAuthenticated, async (_req, res) => {
+  app.get('/api/pi-stream', isAuthenticated, async (req, res) => {
+    const controller = new AbortController();
+    
+    // If the browser drops the connection, cancel the upstream fetch
+    req.on("close", () => {
+      controller.abort();
+    });
+
     try {
       const upstream = await fetch(`${DETECTION_SERVICE_URL}/stream`, {
-        signal: AbortSignal.timeout(3000),
+        signal: controller.signal,
       });
       if (!upstream.ok || !upstream.body) {
         return res.status(502).json({ message: "Pi camera stream unavailable" });
@@ -102,17 +109,25 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Pipe the Node.js ReadableStream to the Express response
       const reader = upstream.body.getReader();
       const pump = async () => {
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done || res.writableEnded) break;
-          res.write(value);
+        try {
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done || res.writableEnded) break;
+            res.write(value);
+          }
+        } catch (err: any) {
+          // Ignore abort errors
+        } finally {
+          res.end();
         }
-        res.end();
       };
-      pump().catch(() => res.end());
+      
+      pump();
+      
+      req.on("close", () => {
+        reader.cancel().catch(() => {});
+      });
 
-      // If browser disconnects, stop pumping
-      res.on("close", () => reader.cancel());
     } catch (e: any) {
       if (!res.headersSent) res.status(502).json({ message: "Pi camera unavailable: " + e.message });
     }
