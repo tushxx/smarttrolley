@@ -64,10 +64,75 @@ ULTRALYTICS_OK = _ensure_ultralytics()
 
 # ── Flask ────────────────────────────────────────────────────────────────────
 try:
-    from flask import Flask, request, jsonify
+    from flask import Flask, request, jsonify, Response, stream_with_context
 except ImportError:
     print("[ERROR] Flask not installed.")
     sys.exit(1)
+
+# ── Pi Camera Setup ──────────────────────────────────────────────────────────
+import threading
+import time
+
+camera_lock  = threading.Lock()
+_pi_camera   = None   # picamera2 instance
+_cv_camera   = None   # OpenCV VideoCapture fallback
+_cam_mode    = None   # "picamera2" | "opencv" | None
+
+def _init_camera():
+    global _pi_camera, _cv_camera, _cam_mode
+    # Try picamera2 first (native Pi camera)
+    try:
+        from picamera2 import Picamera2
+        cam = Picamera2()
+        config = cam.create_video_configuration(
+            main={"size": (640, 480), "format": "RGB888"}
+        )
+        cam.configure(config)
+        cam.start()
+        time.sleep(0.5)  # warm-up
+        _pi_camera = cam
+        _cam_mode  = "picamera2"
+        print("[INFO] ✅ Pi camera initialised via picamera2")
+        return
+    except Exception as e:
+        print(f"[INFO] picamera2 unavailable ({e}), trying OpenCV…")
+
+    # Fallback: OpenCV VideoCapture (USB or CSI with v4l2)
+    try:
+        import cv2
+        cap = cv2.VideoCapture(0)
+        if cap.isOpened():
+            cap.set(cv2.CAP_PROP_FRAME_WIDTH,  640)
+            cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
+            _cv_camera = cap
+            _cam_mode  = "opencv"
+            print("[INFO] ✅ Pi camera initialised via OpenCV VideoCapture")
+            return
+    except Exception as e2:
+        print(f"[WARN] OpenCV camera also unavailable: {e2}")
+
+    print("[WARN] No Pi camera found — /stream and /capture will return errors.")
+
+_init_camera()
+
+def _capture_frame_jpeg(quality: int = 80):
+    """Capture one frame from the Pi camera and return raw JPEG bytes."""
+    with camera_lock:
+        if _cam_mode == "picamera2":
+            import numpy as np, cv2
+            frame = _pi_camera.capture_array()
+            # picamera2 gives RGB — convert to BGR for cv2.imencode
+            bgr = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
+            ok, buf = cv2.imencode(".jpg", bgr, [cv2.IMWRITE_JPEG_QUALITY, quality])
+            return bytes(buf) if ok else None
+        elif _cam_mode == "opencv":
+            import cv2
+            ok, frame = _cv_camera.read()
+            if not ok:
+                return None
+            ok2, buf = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, quality])
+            return bytes(buf) if ok2 else None
+    return None
 
 # ── PIL ──────────────────────────────────────────────────────────────────────
 try:
@@ -196,6 +261,44 @@ def detect():
         "confidence": best["confidence"],
         "all_detections": all_detections,
     })
+
+
+# ── Pi Camera Streaming Endpoints ────────────────────────────────────────────
+
+@app.route("/capture", methods=["GET"])
+def capture():
+    """Return a single JPEG frame as base64 JSON for YOLO detection."""
+    if _cam_mode is None:
+        return jsonify({"error": "No Pi camera available"}), 503
+    jpeg = _capture_frame_jpeg(quality=70)
+    if jpeg is None:
+        return jsonify({"error": "Failed to capture frame"}), 500
+    b64 = base64.b64encode(jpeg).decode()
+    return jsonify({"image": f"data:image/jpeg;base64,{b64}"})
+
+
+def _mjpeg_generator():
+    """Yield MJPEG multipart frames continuously."""
+    while True:
+        jpeg = _capture_frame_jpeg(quality=60)
+        if jpeg:
+            yield (
+                b"--frame\r\n"
+                b"Content-Type: image/jpeg\r\n\r\n" + jpeg + b"\r\n"
+            )
+        else:
+            time.sleep(0.05)
+
+
+@app.route("/stream", methods=["GET"])
+def stream():
+    """MJPEG live stream from the Pi camera."""
+    if _cam_mode is None:
+        return jsonify({"error": "No Pi camera available"}), 503
+    return Response(
+        stream_with_context(_mjpeg_generator()),
+        mimetype="multipart/x-mixed-replace; boundary=frame"
+    )
 
 
 if __name__ == "__main__":

@@ -84,6 +84,55 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // ── Pi Camera Stream (MJPEG proxy) ──────────────────────────────────────────
+  // Proxies the MJPEG stream from detection_service.py to the browser so the
+  // website shows the physical Raspberry Pi camera feed during scanning.
+  app.get('/api/pi-stream', isAuthenticated, async (_req, res) => {
+    try {
+      const upstream = await fetch(`${DETECTION_SERVICE_URL}/stream`, {
+        signal: AbortSignal.timeout(3000),
+      });
+      if (!upstream.ok || !upstream.body) {
+        return res.status(502).json({ message: "Pi camera stream unavailable" });
+      }
+      res.setHeader("Content-Type", upstream.headers.get("content-type") || "multipart/x-mixed-replace; boundary=frame");
+      res.setHeader("Cache-Control", "no-cache");
+      res.setHeader("Connection", "keep-alive");
+
+      // Pipe the Node.js ReadableStream to the Express response
+      const reader = upstream.body.getReader();
+      const pump = async () => {
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done || res.writableEnded) break;
+          res.write(value);
+        }
+        res.end();
+      };
+      pump().catch(() => res.end());
+
+      // If browser disconnects, stop pumping
+      res.on("close", () => reader.cancel());
+    } catch (e: any) {
+      if (!res.headersSent) res.status(502).json({ message: "Pi camera unavailable: " + e.message });
+    }
+  });
+
+  // ── Pi Camera Single Frame (for YOLO detection) ──────────────────────────────
+  // Calls detection_service.py /capture to get one JPEG frame as base64 JSON.
+  app.get('/api/pi-capture', isAuthenticated, async (_req, res) => {
+    try {
+      const resp = await fetch(`${DETECTION_SERVICE_URL}/capture`, {
+        signal: AbortSignal.timeout(3000),
+      });
+      if (!resp.ok) return res.status(502).json({ message: "Pi camera capture failed" });
+      const data = await resp.json();
+      res.json(data);
+    } catch (e: any) {
+      res.status(502).json({ message: "Pi camera unavailable: " + e.message });
+    }
+  });
+
   // ── YOLO Detection ──────────────────────────────────────────────────────────
   app.post('/api/detect', isAuthenticated, async (req, res) => {
     try {
