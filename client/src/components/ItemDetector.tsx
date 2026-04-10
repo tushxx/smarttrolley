@@ -57,6 +57,7 @@ export default function ItemDetector({ onItemDetected, onClose }: ItemDetectorPr
   const captureFrame = useCallback(async (): Promise<string | null> => {
     try {
       const resp = await fetch("/api/pi-capture", {
+        credentials: "include",
         signal: AbortSignal.timeout(3000),
       });
       if (!resp.ok) return null;
@@ -100,6 +101,7 @@ export default function ItemDetector({ onItemDetected, onClose }: ItemDetectorPr
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ image: frame }),
+          credentials: "include",
           signal: AbortSignal.timeout(5000),
         });
 
@@ -154,7 +156,10 @@ export default function ItemDetector({ onItemDetected, onClose }: ItemDetectorPr
 
     const start = async () => {
       try {
-        const health = await fetch("/api/pi-capture", { signal: AbortSignal.timeout(4000) });
+        const health = await fetch("/api/pi-capture", {
+          credentials: "include",
+          signal: AbortSignal.timeout(4000),
+        });
         if (!health.ok) throw new Error("Pi camera returned an error");
       } catch (e: any) {
         if (!cancelled) {
