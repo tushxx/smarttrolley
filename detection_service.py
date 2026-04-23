@@ -155,7 +155,7 @@ def _camera_thread():
 
         cam = Picamera2()
         cfg = cam.create_video_configuration(
-            main={"size": (1280, 720), "format": "RGB888"},
+            main={"size": (640, 360), "format": "RGB888"},
             controls={"FrameDurationLimits": (33333, 33333)},  # ~30 fps
         )
         cam.configure(cfg)
@@ -189,8 +189,8 @@ def _camera_thread():
         for idx in range(4):
             cap = cv2.VideoCapture(idx)
             if cap.isOpened():
-                cap.set(cv2.CAP_PROP_FRAME_WIDTH,  1280)
-                cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 720)
+                cap.set(cv2.CAP_PROP_FRAME_WIDTH,  640)
+                cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 360)
                 cap.set(cv2.CAP_PROP_FPS, 30)
                 _cam_mode = "opencv"
                 _cam_ok   = True
