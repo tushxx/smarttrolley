@@ -135,18 +135,36 @@ export default function ItemDetector({ onItemDetected, onClose }: ItemDetectorPr
     let cancelled = false;
 
     const start = async () => {
-      try {
-        const health = await fetch("/api/pi-capture", { signal: AbortSignal.timeout(4000) });
-        if (!health.ok) throw new Error("Pi camera returned an error");
-      } catch (e: any) {
+      let isHealthy = false;
+      let lastError = "Unknown error";
+
+      // Retry loop: HD cameras take a few seconds to warm up auto-exposure
+      for (let attempt = 1; attempt <= 5; attempt++) {
+        try {
+          const health = await fetch("/api/pi-capture", { signal: AbortSignal.timeout(4000) });
+          if (health.ok) {
+            isHealthy = true;
+            break;
+          } else {
+            lastError = `Server returned ${health.status}`;
+          }
+        } catch (e: any) {
+          lastError = e.message;
+        }
+
+        if (cancelled) return;
+        await new Promise(r => setTimeout(r, 1000)); // wait 1s before retry
+      }
+
+      if (!isHealthy) {
         if (!cancelled) {
           setError(
-            `Pi camera unavailable: ${e.message}. ` +
+            `Pi camera unavailable after 5 attempts (${lastError}). ` +
             `Make sure detection_service.py is running on the Pi.`
           );
           setPhase("error");
-          return;
         }
+        return;
       }
 
       if (cancelled) return;
