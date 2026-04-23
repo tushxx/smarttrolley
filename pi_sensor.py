@@ -28,8 +28,8 @@ import io
 import os
 import sys
 import logging
-import requests
-from PIL import Image
+import requests # type: ignore
+from PIL import Image # type: ignore
 
 logging.basicConfig(
     level=logging.INFO,
@@ -68,10 +68,10 @@ CAMERA_WARMUP_S  = 1.5   # seconds to let camera auto-expose before first captur
 MAX_SCAN_SECS    = 20.0  # abort scan if nothing confirmed within this time
 
 # ── Image capture settings ─────────────────────────────────────────
-CAPTURE_W     = 640
-CAPTURE_H     = 360
-SEND_W        = 640      # resize to this before sending (smaller → faster)
-SEND_H        = 360
+CAPTURE_W     = 1280
+CAPTURE_H     = 720
+SEND_W        = 1280      # resize to this before sending (smaller → faster)
+SEND_H        = 720
 JPEG_QUALITY  = 50
 
 # ═══════════════════════════════════════════════════════════════════
@@ -193,8 +193,8 @@ def scan_loop(camera) -> tuple[str, float] | None:
 
 
 def run_with_gpio():
-    import RPi.GPIO as GPIO
-    from picamera2 import Picamera2
+    import RPi.GPIO as GPIO          # type: ignore
+    from picamera2 import Picamera2  # type: ignore
 
     GPIO.setmode(GPIO.BCM)
     GPIO.setup(PIR_PIN, GPIO.IN)
@@ -273,8 +273,8 @@ def main():
     validate_config()
 
     try:
-        import RPi.GPIO          # noqa: F401
-        from picamera2 import Picamera2  # noqa: F401
+        import RPi.GPIO as GPIO      # type: ignore
+        from picamera2 import Picamera2 # type: ignore
         run_with_gpio()
     except ImportError as e:
         log.warning(f"Hardware library not found ({e})")

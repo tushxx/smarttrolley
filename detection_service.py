@@ -55,7 +55,7 @@ def _ensure_ultralytics():
     ok, err = _pip_install("ultralytics")
     if ok:
         try:
-            import cv2  # noqa: F401
+            import cv2 # type: ignore  # noqa: F401
         except Exception as e2:
             if "libGL" in str(e2):
                 print("[INFO] Switching to opencv-python-headless...")
@@ -79,7 +79,7 @@ except ImportError:
 
 # ── PIL ──────────────────────────────────────────────────────────────────────
 try:
-    from PIL import Image
+    from PIL import Image    # type: ignore
     PIL_OK = True
 except ImportError:
     PIL_OK = False
@@ -105,7 +105,8 @@ def load_model():
         print("[WARN] ultralytics unavailable.")
         return
     try:
-        from ultralytics import YOLO
+        import cv2             # type: ignore
+        from ultralytics import YOLO  # type: ignore
         import numpy as np
         for path in MODEL_PATHS:
             if os.path.exists(path):
@@ -150,12 +151,12 @@ def _camera_thread():
 
     # ── Try picamera2 first ──────────────────────────────────────────────────
     try:
-        from picamera2 import Picamera2
-        import cv2
+        from picamera2 import Picamera2 # type: ignore
+        import cv2 # type: ignore
 
         cam = Picamera2()
         cfg = cam.create_video_configuration(
-            main={"size": (640, 360), "format": "RGB888"},
+            main={"size": (1280, 720), "format": "RGB888"},
             controls={"FrameDurationLimits": (33333, 33333)},  # ~30 fps
         )
         cam.configure(cfg)
@@ -184,13 +185,13 @@ def _camera_thread():
 
     # ── Fallback: OpenCV VideoCapture ────────────────────────────────────────
     try:
-        import cv2
+        import cv2 # type: ignore
 
         for idx in range(4):
             cap = cv2.VideoCapture(idx)
             if cap.isOpened():
-                cap.set(cv2.CAP_PROP_FRAME_WIDTH,  640)
-                cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 360)
+                cap.set(cv2.CAP_PROP_FRAME_WIDTH,  1280)
+                cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 720)
                 cap.set(cv2.CAP_PROP_FPS, 30)
                 _cam_mode = "opencv"
                 _cam_ok   = True
