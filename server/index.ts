@@ -1,6 +1,17 @@
 import dotenv from "dotenv";
 dotenv.config();
 
+// ── Global crash prevention ──────────────────────────────────────────────────
+// Prevent the server from dying on unhandled errors (e.g. Pi camera proxy
+// failures, database connection drops, WebSocket hiccups).
+process.on("uncaughtException", (err) => {
+  console.error("[FATAL] Uncaught exception (server kept running):", err.message);
+  console.error(err.stack);
+});
+process.on("unhandledRejection", (reason) => {
+  console.error("[FATAL] Unhandled promise rejection (server kept running):", reason);
+});
+
 import express, { type Request, Response, NextFunction } from "express";
 import { spawn } from "child_process";
 import { registerRoutes } from "./routes";

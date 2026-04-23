@@ -155,7 +155,7 @@ def _camera_thread():
 
         cam = Picamera2()
         cfg = cam.create_video_configuration(
-            main={"size": (640, 480), "format": "RGB888"},
+            main={"size": (1280, 720), "format": "RGB888"},
             controls={"FrameDurationLimits": (33333, 33333)},  # ~30 fps
         )
         cam.configure(cfg)
@@ -189,8 +189,8 @@ def _camera_thread():
         for idx in range(4):
             cap = cv2.VideoCapture(idx)
             if cap.isOpened():
-                cap.set(cv2.CAP_PROP_FRAME_WIDTH,  640)
-                cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
+                cap.set(cv2.CAP_PROP_FRAME_WIDTH,  1280)
+                cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 720)
                 cap.set(cv2.CAP_PROP_FPS, 30)
                 _cam_mode = "opencv"
                 _cam_ok   = True
@@ -324,6 +324,66 @@ def detect():
         "class":          best["class"],
         "confidence":     best["confidence"],
         "all_detections": all_detections,
+    })
+
+
+# ── Combined Capture + Detect (single round-trip) ────────────────────────────
+@app.route("/capture-and-detect", methods=["POST"])
+def capture_and_detect():
+    """Grab the latest camera frame AND run YOLO in one call.
+    This eliminates the extra HTTP round-trip of capture → detect."""
+    t0 = time.time()
+
+    if not _cam_ok or not _latest_jpeg:
+        return jsonify({"detected": False, "message": "Camera not ready"})
+
+    if not MODEL_LOADED or model is None:
+        return jsonify({"detected": False, "message": "Model not loaded"})
+
+    if not PIL_OK:
+        return jsonify({"error": "Pillow not installed"}), 500
+
+    try:
+        image = Image.open(io.BytesIO(_latest_jpeg)).convert("RGB")
+    except Exception as e:
+        return jsonify({"error": f"Frame decode failed: {e}"}), 500
+
+    if image.width > INFERENCE_SIZE or image.height > INFERENCE_SIZE:
+        image = image.resize((INFERENCE_SIZE, INFERENCE_SIZE), Image.BILINEAR)
+
+    try:
+        results = model(image, verbose=False, imgsz=INFERENCE_SIZE)
+    except Exception as e:
+        return jsonify({"error": f"Inference failed: {e}"}), 500
+
+    all_detections = []
+    for result in results:
+        boxes = result.boxes
+        if boxes is None:
+            continue
+        for box in boxes:
+            conf     = float(box.conf[0])
+            cls_id   = int(box.cls[0])
+            cls_name = model.names.get(cls_id, str(cls_id))
+            if conf >= CONFIDENCE_THRESHOLD:
+                all_detections.append({
+                    "class":      cls_name,
+                    "confidence": round(conf, 3),
+                    "class_id":   cls_id,
+                })
+
+    elapsed_ms = round((time.time() - t0) * 1000)
+
+    if not all_detections:
+        return jsonify({"detected": False, "all_detections": [], "ms": elapsed_ms})
+
+    best = max(all_detections, key=lambda d: d["confidence"])
+    return jsonify({
+        "detected":       True,
+        "class":          best["class"],
+        "confidence":     best["confidence"],
+        "all_detections": all_detections,
+        "ms":             elapsed_ms,
     })
 
 

@@ -53,21 +53,6 @@ export default function ItemDetector({ onItemDetected, onClose }: ItemDetectorPr
   const [error,      setError]      = useState<string | null>(null);
   const [streamKey,  setStreamKey]  = useState(0); // forces reload of MJPEG img
 
-  // ── Capture a frame from Pi camera via /api/pi-capture ─────────────────────
-  const captureFrame = useCallback(async (): Promise<string | null> => {
-    try {
-      const resp = await fetch("/api/pi-capture", {
-        credentials: "include",
-        signal: AbortSignal.timeout(3000),
-      });
-      if (!resp.ok) return null;
-      const data = await resp.json();
-      return data.image ?? null;  // "data:image/jpeg;base64,..."
-    } catch {
-      return null;
-    }
-  }, []);
-
   // ── Confirm a detection ─────────────────────────────────────────────────────
   const confirm = useCallback((data: DetectionResult) => {
     runningRef.current = false;
@@ -75,7 +60,7 @@ export default function ItemDetector({ onItemDetected, onClose }: ItemDetectorPr
     setPhase("confirmed");
   }, []);
 
-  // ── Continuous scan loop — grabs Pi camera frames and runs detection ─────────
+  // ── Continuous scan loop — uses combined capture+detect in one call ─────────
   const scanLoop = useCallback(async () => {
     runningRef.current   = true;
     hitsRef.current      = 0;
@@ -90,23 +75,15 @@ export default function ItemDetector({ onItemDetected, onClose }: ItemDetectorPr
     };
 
     while (runningRef.current) {
-      const frame = await captureFrame();
-      if (!frame) {
-        await new Promise(r => setTimeout(r, 150));
-        continue;
-      }
-
       try {
-        const resp = await fetch("/api/detect", {
+        const resp = await fetch("/api/detect-live", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ image: frame }),
-          credentials: "include",
-          signal: AbortSignal.timeout(5000),
+          signal: AbortSignal.timeout(3000),
         });
 
         if (!runningRef.current) break;
-        if (!resp.ok) { reset(); continue; }
+        if (!resp.ok) { reset(); await new Promise(r => setTimeout(r, 100)); continue; }
 
         const data: DetectionResult = await resp.json();
         if (!runningRef.current) break;
@@ -147,8 +124,11 @@ export default function ItemDetector({ onItemDetected, onClose }: ItemDetectorPr
       } catch {
         if (!runningRef.current) break;
       }
+
+      // Small delay to avoid flooding the server
+      await new Promise(r => setTimeout(r, 100));
     }
-  }, [captureFrame, confirm]);
+  }, [confirm]);
 
   // ── Verify Pi camera is reachable, then start scan loop ────────────────────
   useEffect(() => {
@@ -156,10 +136,7 @@ export default function ItemDetector({ onItemDetected, onClose }: ItemDetectorPr
 
     const start = async () => {
       try {
-        const health = await fetch("/api/pi-capture", {
-          credentials: "include",
-          signal: AbortSignal.timeout(4000),
-        });
+        const health = await fetch("/api/pi-capture", { signal: AbortSignal.timeout(4000) });
         if (!health.ok) throw new Error("Pi camera returned an error");
       } catch (e: any) {
         if (!cancelled) {
@@ -277,8 +254,8 @@ export default function ItemDetector({ onItemDetected, onClose }: ItemDetectorPr
 
       ) : phase !== "error" ? (
         <>
-          {/* ── Pi Camera live stream viewport ── */}
-          <div className="relative rounded-xl overflow-hidden bg-black" style={{ aspectRatio: "4/3" }}>
+          {/* ── Pi Camera live stream viewport (16:9 wide-angle) ── */}
+          <div className="relative rounded-xl overflow-hidden bg-black" style={{ aspectRatio: "16/9" }}>
 
             {/* MJPEG stream from Pi camera — displayed as a plain <img> */}
             {phase !== "starting" && (
@@ -301,8 +278,8 @@ export default function ItemDetector({ onItemDetected, onClose }: ItemDetectorPr
             {/* Scanning overlay */}
             {phase === "scanning" && (
               <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
-                {/* Corner brackets */}
-                <div className="relative w-44 h-44">
+                {/* Corner brackets — wide for wide-angle camera */}
+                <div className="relative w-64 h-36">
                   <div className="absolute top-0 left-0 w-7 h-7 border-t-[3px] border-l-[3px] border-white rounded-tl-md" />
                   <div className="absolute top-0 right-0 w-7 h-7 border-t-[3px] border-r-[3px] border-white rounded-tr-md" />
                   <div className="absolute bottom-0 left-0 w-7 h-7 border-b-[3px] border-l-[3px] border-white rounded-bl-md" />

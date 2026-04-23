@@ -196,6 +196,49 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // ── Live Detection (combined capture + detect in one call) ───────────────────
+  // Uses the Python /capture-and-detect endpoint which grabs the latest camera
+  // frame and runs YOLO inference in a single call — much faster than two hops.
+  app.post('/api/detect-live', isAuthenticated, async (_req, res) => {
+    try {
+      const resp = await fetch(`${DETECTION_SERVICE_URL}/capture-and-detect`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        signal: AbortSignal.timeout(3000),
+      });
+      if (!resp.ok) return res.json({ detected: false, message: "Detection service error" });
+      const detectionResult = await resp.json() as any;
+
+      if (!detectionResult.detected || !detectionResult.class) {
+        return res.json({ detected: false, ms: detectionResult.ms });
+      }
+
+      const product = await storage.getProductByDetectionClass(detectionResult.class);
+      if (!product) {
+        return res.json({
+          detected: true,
+          class: detectionResult.class,
+          confidence: detectionResult.confidence,
+          productFound: false,
+          ms: detectionResult.ms,
+          message: `Detected "${detectionResult.class}" but no product mapped`,
+        });
+      }
+
+      res.json({
+        detected: true,
+        class: detectionResult.class,
+        confidence: detectionResult.confidence,
+        productFound: true,
+        product,
+        ms: detectionResult.ms,
+        allDetections: detectionResult.all_detections || [],
+      });
+    } catch {
+      res.json({ detected: false, message: "Detection service unavailable" });
+    }
+  });
+
   // ── Cart ────────────────────────────────────────────────────────────────────
   app.get('/api/cart', isAuthenticated, async (req: any, res) => {
     try {

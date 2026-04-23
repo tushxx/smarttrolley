@@ -33,7 +33,8 @@ export async function setupVite(app: Express, server: Server) {
       ...viteLogger,
       error: (msg, options) => {
         viteLogger.error(msg, options);
-        process.exit(1);
+        // Do NOT call process.exit(1) here — Vite errors (HMR glitches,
+        // CSS warnings, etc.) are non-fatal and should not kill the server.
       },
     },
     server: serverOptions,

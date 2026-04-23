@@ -68,10 +68,10 @@ CAMERA_WARMUP_S  = 1.5   # seconds to let camera auto-expose before first captur
 MAX_SCAN_SECS    = 20.0  # abort scan if nothing confirmed within this time
 
 # ── Image capture settings ─────────────────────────────────────────
-CAPTURE_W     = 640
-CAPTURE_H     = 480
-SEND_W        = 320      # resize to this before sending (smaller → faster)
-SEND_H        = 240
+CAPTURE_W     = 1280
+CAPTURE_H     = 720
+SEND_W        = 640      # resize to this before sending (smaller → faster)
+SEND_H        = 360
 JPEG_QUALITY  = 50
 
 # ═══════════════════════════════════════════════════════════════════
