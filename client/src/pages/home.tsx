@@ -51,7 +51,7 @@ export default function Home() {
   });
 
   const addToCartMutation = useMutation({
-    mutationFn: async (payload: { productId: string, measuredWeight?: number }) => {
+    mutationFn: async (payload: { productId: string, measuredWeight?: string }) => {
       const res = await apiRequest("POST", "/api/cart/items", { ...payload, quantity: 1 });
       if (!res.ok) { const d = await res.json(); throw new Error(d.message || "Failed"); }
       return res.json();
@@ -86,7 +86,7 @@ export default function Home() {
     setShowDetector(false);
     if (product.unit === 'grams') {
       // If there's an unexplained weight in the basket, assume it's this item
-      const mw = weightDelta > 20 ? weightDelta : 0;
+      const mw = weightDelta > 20 ? weightDelta.toString() : "0";
       addToCartMutation.mutate({ productId: product.id, measuredWeight: mw });
     } else {
       addToCartMutation.mutate({ productId: product.id });
