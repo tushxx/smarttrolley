@@ -25,9 +25,9 @@ interface ItemDetectorProps {
 }
 
 // Confirm instantly if confidence ≥ this (single frame)
-const HIGH_CONF  = 0.85;
+const HIGH_CONF  = 0.70;
 // Confirm after CONFIRM_FRAMES *strictly consecutive* hits of the SAME class
-const MED_CONF   = 0.55;
+const MED_CONF   = 0.50;
 const CONFIRM_FRAMES = 2;
 
 const PRODUCT_IMAGES: Record<string, string> = {
@@ -79,11 +79,11 @@ export default function ItemDetector({ onItemDetected, onClose }: ItemDetectorPr
         const resp = await fetch("/api/detect-live", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          signal: AbortSignal.timeout(3000),
+          signal: AbortSignal.timeout(1500),
         });
 
         if (!runningRef.current) break;
-        if (!resp.ok) { reset(); await new Promise(r => setTimeout(r, 100)); continue; }
+        if (!resp.ok) { reset(); await new Promise(r => setTimeout(r, 30)); continue; }
 
         const data: DetectionResult = await resp.json();
         if (!runningRef.current) break;
@@ -125,8 +125,8 @@ export default function ItemDetector({ onItemDetected, onClose }: ItemDetectorPr
         if (!runningRef.current) break;
       }
 
-      // Small delay to avoid flooding the server
-      await new Promise(r => setTimeout(r, 100));
+      // Minimal delay — the server-side inference is the real throttle
+      await new Promise(r => setTimeout(r, 30));
     }
   }, [confirm]);
 

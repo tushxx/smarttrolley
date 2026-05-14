@@ -116,8 +116,8 @@ MODEL_PATHS = [
     "model.pt",
 ]
 
-INFERENCE_SIZE = 640       # Match training imgsz for best accuracy
-CONFIDENCE_THRESHOLD = 0.50  # Lower threshold; frontend multi-frame logic filters noise
+INFERENCE_SIZE = 320       # Smaller = faster inference; YOLO handles downscale well
+CONFIDENCE_THRESHOLD = 0.45  # Low threshold; frontend multi-frame logic filters noise
 
 # ── Performance tracking ─────────────────────────────────────────────────────
 _inference_times = []  # last N inference durations in ms
@@ -156,7 +156,7 @@ def _try_export_onnx(pt_path: str) -> str | None:
     try:
         from ultralytics import YOLO  # type: ignore
         temp_model = YOLO(pt_path)
-        export_path = temp_model.export(format="onnx", imgsz=INFERENCE_SIZE, half=False, simplify=True)
+        export_path = temp_model.export(format="onnx", imgsz=320, half=False, simplify=True)
         if export_path and os.path.exists(export_path):
             print(f"[ONNX] ✅ Exported to: {export_path}")
             return str(export_path)
@@ -190,8 +190,24 @@ def _load_onnx_session(onnx_path: str):
     print(f"[ONNX] ✅ Session loaded — providers: {ort_session.get_providers()}")
 
 
+# Pre-allocated buffer for ONNX input — avoids GC pressure on every frame
+_onnx_input_buf = np.zeros((1, 3, INFERENCE_SIZE, INFERENCE_SIZE), dtype=np.float32)
+
+
+def _onnx_preprocess_cv2(jpeg_bytes: bytes) -> np.ndarray:
+    """JPEG bytes → ONNX-ready float32 tensor [1, 3, H, W] using cv2 (fast)."""
+    import cv2  # type: ignore
+    arr = np.frombuffer(jpeg_bytes, dtype=np.uint8)
+    img = cv2.imdecode(arr, cv2.IMREAD_COLOR)        # BGR HWC
+    img = cv2.resize(img, (INFERENCE_SIZE, INFERENCE_SIZE), interpolation=cv2.INTER_LINEAR)
+    img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)       # RGB HWC
+    buf = _onnx_input_buf
+    buf[0] = img.transpose(2, 0, 1).astype(np.float32) / 255.0  # CHW
+    return buf
+
+
 def _onnx_preprocess(image: Image.Image) -> np.ndarray:
-    """PIL Image → ONNX-ready float32 tensor [1, 3, H, W] with letterbox padding."""
+    """PIL Image → ONNX-ready float32 tensor [1, 3, H, W] (fallback)."""
     target = INFERENCE_SIZE
     img = image.resize((target, target), Image.BILINEAR)
     arr = np.array(img, dtype=np.float32) / 255.0   # HWC 0-1
@@ -226,10 +242,20 @@ def _onnx_postprocess(output: np.ndarray, conf_threshold: float) -> list:
 
 
 def _run_onnx_inference(image: Image.Image) -> list:
-    """Full ONNX inference pipeline."""
+    """Full ONNX inference pipeline (PIL input)."""
     if ort_session is None:
         return []
     inp = _onnx_preprocess(image)
+    input_name = ort_session.get_inputs()[0].name
+    outputs = ort_session.run(None, {input_name: inp})
+    return _onnx_postprocess(outputs[0], CONFIDENCE_THRESHOLD)
+
+
+def _run_onnx_inference_fast(jpeg_bytes: bytes) -> list:
+    """ONNX inference directly from JPEG bytes — skips PIL entirely."""
+    if ort_session is None:
+        return []
+    inp = _onnx_preprocess_cv2(jpeg_bytes)
     input_name = ort_session.get_inputs()[0].name
     outputs = ort_session.run(None, {input_name: inp})
     return _onnx_postprocess(outputs[0], CONFIDENCE_THRESHOLD)
@@ -241,7 +267,8 @@ def _run_pytorch_inference(image: Image.Image) -> list:
     if model is None:
         return []
 
-    if image.width > INFERENCE_SIZE or image.height > INFERENCE_SIZE:
+    # Always resize to INFERENCE_SIZE for speed
+    if image.width != INFERENCE_SIZE or image.height != INFERENCE_SIZE:
         image = image.resize((INFERENCE_SIZE, INFERENCE_SIZE), Image.BILINEAR)
 
     results = model(image, verbose=False, imgsz=INFERENCE_SIZE)
@@ -263,14 +290,56 @@ def _run_pytorch_inference(image: Image.Image) -> list:
     return detections
 
 
+def _run_pytorch_inference_fast(jpeg_bytes: bytes) -> list:
+    """PyTorch inference directly from JPEG bytes — uses cv2 decode (faster than PIL)."""
+    if model is None:
+        return []
+    import cv2  # type: ignore
+    arr = np.frombuffer(jpeg_bytes, dtype=np.uint8)
+    img = cv2.imdecode(arr, cv2.IMREAD_COLOR)  # BGR
+    img = cv2.resize(img, (INFERENCE_SIZE, INFERENCE_SIZE), interpolation=cv2.INTER_LINEAR)
+    # ultralytics accepts numpy BGR arrays directly
+    results = model(img, verbose=False, imgsz=INFERENCE_SIZE)
+    detections = []
+    for result in results:
+        boxes = result.boxes
+        if boxes is None:
+            continue
+        for box in boxes:
+            conf = float(box.conf[0])
+            cls_id = int(box.cls[0])
+            cls_name = model.names.get(cls_id, str(cls_id))
+            if conf >= CONFIDENCE_THRESHOLD:
+                detections.append({
+                    "class": cls_name,
+                    "confidence": round(conf, 3),
+                    "class_id": cls_id,
+                })
+    return detections
+
+
 # ── Unified inference ────────────────────────────────────────────────────────
 def run_inference(image: Image.Image) -> list:
-    """Run inference using the best available engine (ONNX or PyTorch)."""
+    """Run inference using the best available engine (ONNX or PyTorch). PIL input."""
     t0 = time.time()
     if INFERENCE_ENGINE == "onnx":
         dets = _run_onnx_inference(image)
     elif INFERENCE_ENGINE == "pytorch":
         dets = _run_pytorch_inference(image)
+    else:
+        return []
+    elapsed = (time.time() - t0) * 1000
+    _record_timing(elapsed)
+    return dets
+
+
+def run_inference_from_jpeg(jpeg_bytes: bytes) -> list:
+    """Run inference directly from JPEG bytes — fastest path, skips PIL."""
+    t0 = time.time()
+    if INFERENCE_ENGINE == "onnx":
+        dets = _run_onnx_inference_fast(jpeg_bytes)
+    elif INFERENCE_ENGINE == "pytorch":
+        dets = _run_pytorch_inference_fast(jpeg_bytes)
     else:
         return []
     elapsed = (time.time() - t0) * 1000
@@ -541,7 +610,7 @@ def detect():
 @app.route("/capture-and-detect", methods=["POST"])
 def capture_and_detect():
     """Grab the latest camera frame AND run YOLO in one call.
-    This eliminates the extra HTTP round-trip of capture → detect."""
+    Uses the fast JPEG→cv2 path — no PIL, no base64, no extra copies."""
     t0 = time.time()
 
     if not _cam_ok or not _latest_jpeg:
@@ -550,16 +619,10 @@ def capture_and_detect():
     if not MODEL_LOADED:
         return jsonify({"detected": False, "message": "Model not loaded"})
 
-    if not PIL_OK:
-        return jsonify({"error": "Pillow not installed"}), 500
-
+    # Fast path: decode JPEG with cv2 directly — skips PIL entirely
+    jpeg_snap = _latest_jpeg  # snapshot to avoid race
     try:
-        image = Image.open(io.BytesIO(_latest_jpeg)).convert("RGB")
-    except Exception as e:
-        return jsonify({"error": f"Frame decode failed: {e}"}), 500
-
-    try:
-        all_detections = run_inference(image)
+        all_detections = run_inference_from_jpeg(jpeg_snap)
     except Exception as e:
         return jsonify({"error": f"Inference failed: {e}"}), 500
 
