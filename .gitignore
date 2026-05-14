@@ -23,3 +23,6 @@ Thumbs.db
 # IDE
 .vscode
 .idea
+
+# Calibration (device-specific)
+weight_calibration.json
