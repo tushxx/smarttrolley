@@ -25,11 +25,11 @@ function Logo() {
 }
 
 const DETECTABLE = [
-  { name: "Perfume",       emoji: "🌸" },
-  { name: "Playing Cards", emoji: "🃏" },
-  { name: "Face Wash",     emoji: "🧴" },
-  { name: "Earbuds",       emoji: "🎧" },
-  { name: "Shampoo",       emoji: "🧴" },
+  { name: "Appy Fizz",      emoji: "🥤" },
+  { name: "Frooti",         emoji: "🧃" },
+  { name: "Moisturizer",    emoji: "🧴" },
+  { name: "Soap",           emoji: "🧼" },
+  { name: "Water Bottle",   emoji: "💧" },
 ];
 
 export default function Home() {

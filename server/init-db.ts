@@ -113,52 +113,52 @@ export async function initializeDatabase() {
       console.log('🌱 Seeding products for YOLO detection classes...');
 
       // Class names match exactly what the YOLO model outputs
-      // Model classes: {0:'Cards', 1:'Earbuds', 2:'Facewash', 3:'Perfume', 4:'Shampoo'}
+      // Model classes: {0:'APPY FIZZ', 1:'FROOTI', 2:'MOISTURIZER', 3:'SOAP', 4:'WATER BOTTLE'}
       const yoloProducts = [
         {
-          name: 'Perfume',
-          brand: 'Luxury',
-          description: 'Premium fragrance detected by AI camera',
-          price: '1999.00',
-          detection_class: 'Perfume',
-          category: 'Beauty',
-          image_url: 'https://images.unsplash.com/photo-1541643600914-78b084683702?w=300&h=300&fit=crop',
+          name: 'Appy Fizz',
+          brand: 'Parle Agro',
+          description: 'Sparkling apple juice drink 250ml',
+          price: '40.00',
+          detection_class: 'APPY FIZZ',
+          category: 'Beverages',
+          image_url: 'https://images.unsplash.com/photo-1622483767028-3f66f32aef97?w=300&h=300&fit=crop',
         },
         {
-          name: 'Playing Cards',
-          brand: 'Classic',
-          description: 'Standard deck of playing cards',
+          name: 'Frooti',
+          brand: 'Parle Agro',
+          description: 'Mango fruit drink 200ml Tetra Pak',
+          price: '20.00',
+          detection_class: 'FROOTI',
+          category: 'Beverages',
+          image_url: 'https://images.unsplash.com/photo-1546173159-315724a31696?w=300&h=300&fit=crop',
+        },
+        {
+          name: 'Moisturizer',
+          brand: 'Nivea',
+          description: 'Daily moisturizing cream for all skin types',
           price: '299.00',
-          detection_class: 'Cards',
-          category: 'Games',
-          image_url: 'https://images.unsplash.com/photo-1541961017774-22349e4a1262?w=300&h=300&fit=crop',
-        },
-        {
-          name: 'Face Wash',
-          brand: 'Skincare',
-          description: 'Daily facial cleanser for all skin types',
-          price: '449.00',
-          detection_class: 'Facewash',
+          detection_class: 'MOISTURIZER',
           category: 'Personal Care',
-          image_url: 'https://images.unsplash.com/photo-1556228578-8c89e6adf883?w=300&h=300&fit=crop',
+          image_url: 'https://images.unsplash.com/photo-1611930022073-b7a4ba5fcccd?w=300&h=300&fit=crop',
         },
         {
-          name: 'Earbuds',
-          brand: 'SoundPro',
-          description: 'Wireless Bluetooth earbuds',
-          price: '8999.00',
-          detection_class: 'Earbuds',
-          category: 'Electronics',
-          image_url: 'https://images.unsplash.com/photo-1505740420928-5e560c06d30e?w=300&h=300&fit=crop',
-        },
-        {
-          name: 'Shampoo',
-          brand: 'HairCare',
-          description: 'Nourishing shampoo for healthy hair',
-          price: '399.00',
-          detection_class: 'Shampoo',
+          name: 'Soap',
+          brand: 'Dove',
+          description: 'Moisturizing beauty bar soap 100g',
+          price: '55.00',
+          detection_class: 'SOAP',
           category: 'Personal Care',
-          image_url: 'https://images.unsplash.com/photo-1535585209827-a15fcdbc4c2d?w=300&h=300&fit=crop',
+          image_url: 'https://images.unsplash.com/photo-1600857544200-b2f666a9a2ec?w=300&h=300&fit=crop',
+        },
+        {
+          name: 'Water Bottle',
+          brand: 'Bisleri',
+          description: 'Packaged drinking water 500ml',
+          price: '20.00',
+          detection_class: 'WATER BOTTLE',
+          category: 'Beverages',
+          image_url: 'https://images.unsplash.com/photo-1602143407151-7111542de6e8?w=300&h=300&fit=crop',
         },
       ];
 
@@ -170,7 +170,7 @@ export async function initializeDatabase() {
         `);
       }
 
-      console.log('✅ Products seeded for YOLO classes: Cards, Earbuds, Facewash, Perfume, Shampoo');
+      console.log('✅ Products seeded for YOLO classes: APPY FIZZ, FROOTI, MOISTURIZER, SOAP, WATER BOTTLE');
     }
 
     // Log products

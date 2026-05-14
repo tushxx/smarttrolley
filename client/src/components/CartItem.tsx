@@ -12,11 +12,11 @@ interface CartItemProps {
 }
 
 const PRODUCT_IMAGES: Record<string, string> = {
-  Perfume: "https://images.unsplash.com/photo-1592945403244-b3fbafd7f539?w=120&h=120&fit=crop",
-  Cards: "https://images.unsplash.com/photo-1612404730960-5c71577fca11?w=120&h=120&fit=crop",
-  Facewash: "https://images.unsplash.com/photo-1556228578-8c89e6adf883?w=120&h=120&fit=crop",
-  Earbuds: "https://images.unsplash.com/photo-1606220588913-b3aacb4d2f46?w=120&h=120&fit=crop",
-  Shampoo: "https://images.unsplash.com/photo-1631390015880-e37a6f7bede5?w=120&h=120&fit=crop",
+  "APPY FIZZ": "https://images.unsplash.com/photo-1622483767028-3f66f32aef97?w=120&h=120&fit=crop",
+  "FROOTI": "https://images.unsplash.com/photo-1546173159-315724a31696?w=120&h=120&fit=crop",
+  "MOISTURIZER": "https://images.unsplash.com/photo-1611930022073-b7a4ba5fcccd?w=120&h=120&fit=crop",
+  "SOAP": "https://images.unsplash.com/photo-1600857544200-b2f666a9a2ec?w=120&h=120&fit=crop",
+  "WATER BOTTLE": "https://images.unsplash.com/photo-1602143407151-7111542de6e8?w=120&h=120&fit=crop",
 };
 
 export default function CartItem({ item }: CartItemProps) {

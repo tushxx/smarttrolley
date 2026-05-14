@@ -30,12 +30,12 @@ const STEPS = [
   {
     n: "01",
     title: "Place item in trolley",
-    body: "The camera on the handle immediately points at the product you just dropped in.",
+    body: "Drop in a Frooti, Appy Fizz, soap, moisturizer or water bottle — the AI camera on the handle sees it instantly.",
   },
   {
     n: "02",
-    title: "AI detects in seconds",
-    body: "YOLO11s runs on-device on a Raspberry Pi 5. No internet required. Result in under 3 s.",
+    title: "AI detects in milliseconds",
+    body: "YOLO11s + ONNX Runtime runs on-device on a Raspberry Pi 5. No internet required. Result in under 100 ms.",
   },
   {
     n: "03",
@@ -82,7 +82,7 @@ export default function Landing() {
       <main className="flex-1 flex flex-col items-center justify-center px-6 py-20 text-center">
         <div className="inline-flex items-center gap-2 bg-green-50 text-green-700 text-xs font-medium px-3.5 py-1.5 rounded-full border border-green-100 mb-8">
           <span className="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse inline-block"></span>
-          Smart Shopping Trolley — Powered by YOLO11s
+          Smart Shopping Trolley — YOLO11s + ONNX Runtime
         </div>
 
         <h1 className="text-5xl sm:text-6xl lg:text-7xl font-extrabold text-gray-950 tracking-tight leading-[1.06] max-w-3xl">
@@ -154,7 +154,7 @@ export default function Landing() {
       <footer className="border-t border-gray-100 px-8 py-5">
         <div className="max-w-4xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-2 text-xs text-gray-400">
           <span>SmartCart · Final Year Engineering Project</span>
-          <span>YOLO11s · Raspberry Pi 5 · Razorpay · AWS IoT</span>
+          <span>YOLO11s · ONNX Runtime · Raspberry Pi 5 · Razorpay</span>
         </div>
       </footer>
     </div>

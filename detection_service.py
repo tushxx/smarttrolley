@@ -1,6 +1,6 @@
 """
-YOLO Item Detection Service — with Pi Camera streaming
-=======================================================
+YOLO Item Detection Service — with Pi Camera streaming + ONNX acceleration
+============================================================================
 Runs on port 8001.
 
 Architecture:
@@ -12,6 +12,11 @@ Architecture:
 • GET /capture  — Returns latest frame as base64 JSON for YOLO detection
 • POST /detect  — Receives a base64 image and runs YOLO inference
 • GET /health   — Service health status
+• GET /model-info — Detailed model + performance info
+
+Performance targets (Raspberry Pi 5, no GPU):
+  • PyTorch path:  ~300-500 ms per frame
+  • ONNX path:     ~50-150 ms per frame  ← preferred
 """
 
 import sys
@@ -85,45 +90,247 @@ except ImportError:
     PIL_OK = False
     print("[WARN] Pillow not installed. Image decoding will fail.")
 
+# ── ONNX Runtime (optional — huge speed boost on Pi) ─────────────────────────
+ONNX_OK = False
+ort_session = None
+try:
+    import onnxruntime as ort  # type: ignore
+    ONNX_OK = True
+    print("[INFO] ✅ onnxruntime available — will use ONNX acceleration if model exists")
+except ImportError:
+    print("[INFO] onnxruntime not installed — using PyTorch inference (slower)")
+    print("[TIP]  pip install onnxruntime  for 2-5x faster inference on Pi")
+
+import numpy as np  # type: ignore
+
 # ── YOLO Model ───────────────────────────────────────────────────────────────
 MODEL_LOADED = False
 model = None
+model_names = {}  # class_id → class_name mapping
+INFERENCE_ENGINE = "none"  # "onnx" | "pytorch" | "none"
 
 MODEL_PATHS = [
-    "attached_assets/my_model_1774040104348.pt",
+    "attached_assets/my_model (1).pt",
+    "attached_assets/my_model.pt",
     "my_model.pt",
     "model.pt",
 ]
 
-INFERENCE_SIZE = 320
-CONFIDENCE_THRESHOLD = 0.62
+INFERENCE_SIZE = 640       # Match training imgsz for best accuracy
+CONFIDENCE_THRESHOLD = 0.50  # Lower threshold; frontend multi-frame logic filters noise
+
+# ── Performance tracking ─────────────────────────────────────────────────────
+_inference_times = []  # last N inference durations in ms
+_MAX_TIMING_SAMPLES = 50
 
 
+def _record_timing(ms: float):
+    _inference_times.append(ms)
+    if len(_inference_times) > _MAX_TIMING_SAMPLES:
+        _inference_times.pop(0)
+
+
+def _get_timing_stats():
+    if not _inference_times:
+        return {"avg_ms": 0, "min_ms": 0, "max_ms": 0, "samples": 0}
+    return {
+        "avg_ms": round(sum(_inference_times) / len(_inference_times), 1),
+        "min_ms": round(min(_inference_times), 1),
+        "max_ms": round(max(_inference_times), 1),
+        "samples": len(_inference_times),
+    }
+
+
+# ── ONNX Export ──────────────────────────────────────────────────────────────
+def _try_export_onnx(pt_path: str) -> str | None:
+    """Try to export .pt → .onnx for faster inference. Returns .onnx path or None."""
+    onnx_path = pt_path.rsplit(".", 1)[0] + ".onnx"
+    if os.path.exists(onnx_path):
+        print(f"[ONNX] Found existing: {onnx_path}")
+        return onnx_path
+
+    if not ULTRALYTICS_OK:
+        return None
+
+    print(f"[ONNX] Exporting {pt_path} → ONNX (one-time, may take 30-60s)...")
+    try:
+        from ultralytics import YOLO  # type: ignore
+        temp_model = YOLO(pt_path)
+        export_path = temp_model.export(format="onnx", imgsz=INFERENCE_SIZE, half=False, simplify=True)
+        if export_path and os.path.exists(export_path):
+            print(f"[ONNX] ✅ Exported to: {export_path}")
+            return str(export_path)
+        # Sometimes ultralytics returns a different path pattern
+        if os.path.exists(onnx_path):
+            return onnx_path
+    except Exception as e:
+        print(f"[ONNX] Export failed (will use PyTorch): {e}")
+
+    return None
+
+
+# ── ONNX Inference helpers ───────────────────────────────────────────────────
+def _load_onnx_session(onnx_path: str):
+    """Load ONNX model into onnxruntime InferenceSession."""
+    global ort_session
+    providers = ["CPUExecutionProvider"]
+    # Try CoreML on macOS for extra speed
+    try:
+        if "CoreMLExecutionProvider" in ort.get_available_providers():
+            providers.insert(0, "CoreMLExecutionProvider")
+    except Exception:
+        pass
+
+    sess_opts = ort.SessionOptions()
+    sess_opts.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_ALL
+    sess_opts.intra_op_num_threads = 4  # Pi 5 has 4 cores
+    sess_opts.inter_op_num_threads = 1
+
+    ort_session = ort.InferenceSession(onnx_path, sess_options=sess_opts, providers=providers)
+    print(f"[ONNX] ✅ Session loaded — providers: {ort_session.get_providers()}")
+
+
+def _onnx_preprocess(image: Image.Image) -> np.ndarray:
+    """PIL Image → ONNX-ready float32 tensor [1, 3, H, W] with letterbox padding."""
+    target = INFERENCE_SIZE
+    img = image.resize((target, target), Image.BILINEAR)
+    arr = np.array(img, dtype=np.float32) / 255.0   # HWC 0-1
+    arr = arr.transpose(2, 0, 1)                     # CHW
+    arr = np.expand_dims(arr, axis=0)                # NCHW
+    return np.ascontiguousarray(arr)
+
+
+def _onnx_postprocess(output: np.ndarray, conf_threshold: float) -> list:
+    """Parse ONNX YOLO output [1, 5+nc, N] → list of detections."""
+    # output shape: (1, 4+nc, num_boxes) — transpose to (num_boxes, 4+nc)
+    if output.ndim == 3:
+        output = output[0]  # remove batch dim
+    if output.shape[0] < output.shape[1]:
+        output = output.T   # now (num_boxes, 4+nc)
+
+    detections = []
+    for row in output:
+        # row = [cx, cy, w, h, class0_conf, class1_conf, ...]
+        class_scores = row[4:]
+        max_conf = float(np.max(class_scores))
+        if max_conf >= conf_threshold:
+            cls_id = int(np.argmax(class_scores))
+            cls_name = model_names.get(cls_id, str(cls_id))
+            detections.append({
+                "class": cls_name,
+                "confidence": round(max_conf, 3),
+                "class_id": cls_id,
+            })
+
+    return detections
+
+
+def _run_onnx_inference(image: Image.Image) -> list:
+    """Full ONNX inference pipeline."""
+    if ort_session is None:
+        return []
+    inp = _onnx_preprocess(image)
+    input_name = ort_session.get_inputs()[0].name
+    outputs = ort_session.run(None, {input_name: inp})
+    return _onnx_postprocess(outputs[0], CONFIDENCE_THRESHOLD)
+
+
+# ── PyTorch (ultralytics) inference ──────────────────────────────────────────
+def _run_pytorch_inference(image: Image.Image) -> list:
+    """Standard ultralytics YOLO inference."""
+    if model is None:
+        return []
+
+    if image.width > INFERENCE_SIZE or image.height > INFERENCE_SIZE:
+        image = image.resize((INFERENCE_SIZE, INFERENCE_SIZE), Image.BILINEAR)
+
+    results = model(image, verbose=False, imgsz=INFERENCE_SIZE)
+    detections = []
+    for result in results:
+        boxes = result.boxes
+        if boxes is None:
+            continue
+        for box in boxes:
+            conf = float(box.conf[0])
+            cls_id = int(box.cls[0])
+            cls_name = model.names.get(cls_id, str(cls_id))
+            if conf >= CONFIDENCE_THRESHOLD:
+                detections.append({
+                    "class": cls_name,
+                    "confidence": round(conf, 3),
+                    "class_id": cls_id,
+                })
+    return detections
+
+
+# ── Unified inference ────────────────────────────────────────────────────────
+def run_inference(image: Image.Image) -> list:
+    """Run inference using the best available engine (ONNX or PyTorch)."""
+    t0 = time.time()
+    if INFERENCE_ENGINE == "onnx":
+        dets = _run_onnx_inference(image)
+    elif INFERENCE_ENGINE == "pytorch":
+        dets = _run_pytorch_inference(image)
+    else:
+        return []
+    elapsed = (time.time() - t0) * 1000
+    _record_timing(elapsed)
+    return dets
+
+
+# ── Model loading ────────────────────────────────────────────────────────────
 def load_model():
-    global model, MODEL_LOADED
+    global model, MODEL_LOADED, model_names, INFERENCE_ENGINE
+
     if not ULTRALYTICS_OK:
         print("[WARN] ultralytics unavailable.")
         return
+
     try:
-        import cv2             # type: ignore
         from ultralytics import YOLO  # type: ignore
-        import numpy as np
+
+        pt_path = None
         for path in MODEL_PATHS:
             if os.path.exists(path):
-                print(f"[INFO] Loading YOLO model from: {path}")
-                model = YOLO(path)
-                MODEL_LOADED = True
-                print(f"[INFO] ✅ Model loaded. Classes: {model.names}")
+                pt_path = path
+                break
 
-                # Warmup
-                print("[INFO] Warming up model…")
-                dummy = Image.fromarray(
-                    __import__("numpy").zeros((INFERENCE_SIZE, INFERENCE_SIZE, 3), dtype="uint8")
-                )
-                model(dummy, verbose=False, imgsz=INFERENCE_SIZE)
-                print("[INFO] ✅ Model warm — first real inference will be fast")
-                return
-        print("[WARN] No model file found. Looked for:", MODEL_PATHS)
+        if not pt_path:
+            print("[WARN] No model file found. Looked for:", MODEL_PATHS)
+            return
+
+        print(f"[INFO] Loading YOLO model from: {pt_path}")
+        model = YOLO(pt_path)
+        model_names = dict(model.names)
+        MODEL_LOADED = True
+        print(f"[INFO] ✅ Model loaded. Classes: {model_names}")
+
+        # ── Try ONNX acceleration ────────────────────────────────────────
+        if ONNX_OK:
+            onnx_path = _try_export_onnx(pt_path)
+            if onnx_path:
+                try:
+                    _load_onnx_session(onnx_path)
+                    INFERENCE_ENGINE = "onnx"
+                    print("[INFO] 🚀 Using ONNX Runtime for inference (fast mode)")
+                except Exception as e:
+                    print(f"[WARN] ONNX session load failed, falling back to PyTorch: {e}")
+                    INFERENCE_ENGINE = "pytorch"
+            else:
+                INFERENCE_ENGINE = "pytorch"
+        else:
+            INFERENCE_ENGINE = "pytorch"
+
+        # ── Warmup ───────────────────────────────────────────────────────
+        print(f"[INFO] Warming up model ({INFERENCE_ENGINE})…")
+        dummy = Image.fromarray(np.zeros((INFERENCE_SIZE, INFERENCE_SIZE, 3), dtype="uint8"))
+        run_inference(dummy)
+        print(f"[INFO] ✅ Model warm — inference engine: {INFERENCE_ENGINE}")
+
+        stats = _get_timing_stats()
+        if stats["samples"] > 0:
+            print(f"[INFO] Warmup inference: {stats['avg_ms']:.0f}ms")
+
     except Exception as e:
         print(f"[ERROR] Failed to load model: {e}")
         traceback.print_exc()
@@ -264,8 +471,29 @@ def health():
         "cam_ok": _cam_ok,
         "model_loaded": MODEL_LOADED,
         "ultralytics_ok": ULTRALYTICS_OK,
+        "inference_engine": INFERENCE_ENGINE,
         "inference_size": INFERENCE_SIZE,
-        "model_classes": list(model.names.values()) if MODEL_LOADED else [],
+        "confidence_threshold": CONFIDENCE_THRESHOLD,
+        "model_classes": list(model_names.values()),
+    })
+
+
+# ── Model Info (detailed) ───────────────────────────────────────────────────
+@app.route("/model-info", methods=["GET"])
+def model_info():
+    """Detailed model and performance information for the frontend."""
+    stats = _get_timing_stats()
+    return jsonify({
+        "model_loaded": MODEL_LOADED,
+        "inference_engine": INFERENCE_ENGINE,
+        "onnx_available": ONNX_OK,
+        "inference_size": INFERENCE_SIZE,
+        "confidence_threshold": CONFIDENCE_THRESHOLD,
+        "classes": model_names,
+        "class_count": len(model_names),
+        "timing": stats,
+        "cam_mode": _cam_mode,
+        "cam_ok": _cam_ok,
     })
 
 
@@ -289,32 +517,13 @@ def detect():
     except Exception as e:
         return jsonify({"error": f"Invalid image data: {e}"}), 400
 
-    if image.width > INFERENCE_SIZE or image.height > INFERENCE_SIZE:
-        image = image.resize((INFERENCE_SIZE, INFERENCE_SIZE), Image.BILINEAR)
-
-    if not MODEL_LOADED or model is None:
+    if not MODEL_LOADED:
         return jsonify({"detected": False, "message": "Model not loaded"})
 
     try:
-        results = model(image, verbose=False, imgsz=INFERENCE_SIZE)
+        all_detections = run_inference(image)
     except Exception as e:
         return jsonify({"error": f"Inference failed: {e}"}), 500
-
-    all_detections = []
-    for result in results:
-        boxes = result.boxes
-        if boxes is None:
-            continue
-        for box in boxes:
-            conf    = float(box.conf[0])
-            cls_id  = int(box.cls[0])
-            cls_name = model.names.get(cls_id, str(cls_id))
-            if conf >= CONFIDENCE_THRESHOLD:
-                all_detections.append({
-                    "class":      cls_name,
-                    "confidence": round(conf, 3),
-                    "class_id":   cls_id,
-                })
 
     if not all_detections:
         return jsonify({"detected": False, "all_detections": []})
@@ -338,7 +547,7 @@ def capture_and_detect():
     if not _cam_ok or not _latest_jpeg:
         return jsonify({"detected": False, "message": "Camera not ready"})
 
-    if not MODEL_LOADED or model is None:
+    if not MODEL_LOADED:
         return jsonify({"detected": False, "message": "Model not loaded"})
 
     if not PIL_OK:
@@ -349,29 +558,10 @@ def capture_and_detect():
     except Exception as e:
         return jsonify({"error": f"Frame decode failed: {e}"}), 500
 
-    if image.width > INFERENCE_SIZE or image.height > INFERENCE_SIZE:
-        image = image.resize((INFERENCE_SIZE, INFERENCE_SIZE), Image.BILINEAR)
-
     try:
-        results = model(image, verbose=False, imgsz=INFERENCE_SIZE)
+        all_detections = run_inference(image)
     except Exception as e:
         return jsonify({"error": f"Inference failed: {e}"}), 500
-
-    all_detections = []
-    for result in results:
-        boxes = result.boxes
-        if boxes is None:
-            continue
-        for box in boxes:
-            conf     = float(box.conf[0])
-            cls_id   = int(box.cls[0])
-            cls_name = model.names.get(cls_id, str(cls_id))
-            if conf >= CONFIDENCE_THRESHOLD:
-                all_detections.append({
-                    "class":      cls_name,
-                    "confidence": round(conf, 3),
-                    "class_id":   cls_id,
-                })
 
     elapsed_ms = round((time.time() - t0) * 1000)
 
@@ -385,10 +575,12 @@ def capture_and_detect():
         "confidence":     best["confidence"],
         "all_detections": all_detections,
         "ms":             elapsed_ms,
+        "engine":         INFERENCE_ENGINE,
     })
 
 
 if __name__ == "__main__":
     port = int(os.environ.get("DETECTION_PORT", 8001))
     print(f"[INFO] 🚀 Detection service starting on port {port}")
+    print(f"[INFO]    Engine: {INFERENCE_ENGINE} | Classes: {list(model_names.values())}")
     app.run(host="0.0.0.0", port=port, debug=False, threaded=True)
