@@ -606,91 +606,11 @@ def detect():
     })
 
 
-# ── Weight Sensor (HX711 Load Cell) ──────────────────────────────────────────
-_weight_sensor = None
-WEIGHT_OK = False
-
-try:
-    from weight_sensor import WeightSensor
-    _weight_sensor = WeightSensor()
-    WEIGHT_OK = _weight_sensor.calibrated
-    if WEIGHT_OK:
-        print(f"[WEIGHT] ✅ Weight sensor ready (calibrated)")
-    else:
-        print(f"[WEIGHT] ⚠️ Sensor loaded but NOT calibrated — run weight_calibration_script.py")
-except Exception as e:
-    print(f"[WEIGHT] Weight sensor unavailable: {e}")
-    print(f"[WEIGHT] Camera-only detection will be used (no two-factor)")
-
-
-# Known product weights (grams) — must match database
-PRODUCT_WEIGHTS = {
-    "APPY FIZZ":    275.0,
-    "FROOTI":       210.0,
-    "MOISTURIZER":  150.0,
-    "SOAP":         115.0,
-    "WATER BOTTLE": 530.0,
-}
-
-# Weight tolerance: ±20% to account for manufacturing variance + sensor noise
-WEIGHT_TOLERANCE = 0.20
-
-
-def _check_weight_match(detected_class: str, measured_weight: float) -> dict:
-    """Check if measured weight matches the expected weight for a detected product."""
-    expected = PRODUCT_WEIGHTS.get(detected_class)
-    if expected is None:
-        return {"match": False, "reason": "unknown_product"}
-
-    lower = expected * (1 - WEIGHT_TOLERANCE)
-    upper = expected * (1 + WEIGHT_TOLERANCE)
-    matches = lower <= measured_weight <= upper
-
-    return {
-        "match":       matches,
-        "expected_g":  expected,
-        "measured_g":  round(measured_weight, 1),
-        "tolerance":   f"±{int(WEIGHT_TOLERANCE * 100)}%",
-        "range":       f"{lower:.0f}-{upper:.0f}g",
-    }
-
-
-@app.route("/weight", methods=["GET"])
-def get_weight():
-    """Read the current weight from the load cell."""
-    if not WEIGHT_OK or _weight_sensor is None:
-        return jsonify({"error": "Weight sensor not calibrated", "weight_ok": False}), 503
-
-    try:
-        grams = _weight_sensor.get_weight_grams(times=3)
-        return jsonify({
-            "weight_g":   round(grams, 1),
-            "weight_ok":  True,
-            "calibrated": _weight_sensor.calibrated,
-        })
-    except Exception as e:
-        return jsonify({"error": f"Weight read failed: {e}", "weight_ok": False}), 500
-
-
-@app.route("/tare", methods=["POST"])
-def tare_scale():
-    """Zero the scale (call with nothing on it)."""
-    if _weight_sensor is None:
-        return jsonify({"error": "Weight sensor not available"}), 503
-
-    try:
-        _weight_sensor.tare(times=15)
-        return jsonify({"success": True, "offset": _weight_sensor.offset})
-    except Exception as e:
-        return jsonify({"error": f"Tare failed: {e}"}), 500
-
-
-# ── Combined Capture + Detect + Weight (single round-trip) ────────────────────
+# ── Combined Capture + Detect (single round-trip) ────────────────────────────
 @app.route("/capture-and-detect", methods=["POST"])
 def capture_and_detect():
-    """Grab the latest camera frame, run YOLO, AND read weight — all in one call.
-    Uses the fast JPEG→cv2 path — no PIL, no base64, no extra copies.
-    Two-factor verification: camera detection + weight matching."""
+    """Grab the latest camera frame AND run YOLO in one call.
+    Uses the fast JPEG→cv2 path — no PIL, no base64, no extra copies."""
     t0 = time.time()
 
     if not _cam_ok or not _latest_jpeg:
@@ -708,45 +628,22 @@ def capture_and_detect():
 
     elapsed_ms = round((time.time() - t0) * 1000)
 
-    # ── Read weight (if sensor available) ────────────────────────────────────
-    weight_data = None
-    if WEIGHT_OK and _weight_sensor is not None:
-        try:
-            grams = _weight_sensor.get_weight_grams(times=2)  # fast read
-            weight_data = {"weight_g": round(grams, 1)}
-        except Exception:
-            pass
-
     if not all_detections:
-        resp = {"detected": False, "all_detections": [], "ms": elapsed_ms}
-        if weight_data:
-            resp["weight"] = weight_data
-        return jsonify(resp)
+        return jsonify({"detected": False, "all_detections": [], "ms": elapsed_ms})
 
     best = max(all_detections, key=lambda d: d["confidence"])
-
-    # ── Two-factor: check weight match ───────────────────────────────────────
-    if weight_data and best.get("class"):
-        weight_check = _check_weight_match(best["class"], weight_data["weight_g"])
-        weight_data["verification"] = weight_check
-
-    resp = {
+    return jsonify({
         "detected":       True,
         "class":          best["class"],
         "confidence":     best["confidence"],
         "all_detections": all_detections,
         "ms":             elapsed_ms,
         "engine":         INFERENCE_ENGINE,
-    }
-    if weight_data:
-        resp["weight"] = weight_data
-
-    return jsonify(resp)
+    })
 
 
 if __name__ == "__main__":
     port = int(os.environ.get("DETECTION_PORT", 8001))
     print(f"[INFO] 🚀 Detection service starting on port {port}")
     print(f"[INFO]    Engine: {INFERENCE_ENGINE} | Classes: {list(model_names.values())}")
-    print(f"[INFO]    Weight sensor: {'✅ calibrated' if WEIGHT_OK else '❌ not available'}")
     app.run(host="0.0.0.0", port=port, debug=False, threaded=True)

@@ -123,8 +123,6 @@ export async function initializeDatabase() {
           detection_class: 'APPY FIZZ',
           category: 'Beverages',
           image_url: 'https://images.unsplash.com/photo-1622483767028-3f66f32aef97?w=300&h=300&fit=crop',
-          weight: '275.000',
-          unit: 'grams',
         },
         {
           name: 'Frooti',
@@ -134,8 +132,6 @@ export async function initializeDatabase() {
           detection_class: 'FROOTI',
           category: 'Beverages',
           image_url: 'https://images.unsplash.com/photo-1546173159-315724a31696?w=300&h=300&fit=crop',
-          weight: '210.000',
-          unit: 'grams',
         },
         {
           name: 'Moisturizer',
@@ -145,8 +141,6 @@ export async function initializeDatabase() {
           detection_class: 'MOISTURIZER',
           category: 'Personal Care',
           image_url: 'https://images.unsplash.com/photo-1611930022073-b7a4ba5fcccd?w=300&h=300&fit=crop',
-          weight: '150.000',
-          unit: 'grams',
         },
         {
           name: 'Soap',
@@ -156,8 +150,6 @@ export async function initializeDatabase() {
           detection_class: 'SOAP',
           category: 'Personal Care',
           image_url: 'https://images.unsplash.com/photo-1600857544200-b2f666a9a2ec?w=300&h=300&fit=crop',
-          weight: '115.000',
-          unit: 'grams',
         },
         {
           name: 'Water Bottle',
@@ -167,26 +159,13 @@ export async function initializeDatabase() {
           detection_class: 'WATER BOTTLE',
           category: 'Beverages',
           image_url: 'https://images.unsplash.com/photo-1602143407151-7111542de6e8?w=300&h=300&fit=crop',
-          weight: '530.000',
-          unit: 'grams',
-        },
-        {
-          name: 'Fresh Vegetables',
-          brand: 'Local Farm',
-          description: 'Fresh seasonal vegetables (sold by weight)',
-          price: '100.00',
-          detection_class: 'VEGETABLE',
-          category: 'Produce',
-          image_url: 'https://images.unsplash.com/photo-1566385101042-1a0aa0c1268c?w=300&h=300&fit=crop',
-          weight: '100.000',
-          unit: 'grams',
         },
       ];
 
       for (const p of yoloProducts) {
         await db.execute(sql`
-          INSERT INTO products (name, brand, description, price, detection_class, category, image_url, weight, unit)
-          VALUES (${p.name}, ${p.brand}, ${p.description}, ${p.price}, ${p.detection_class}, ${p.category}, ${p.image_url}, ${p.weight}, ${p.unit})
+          INSERT INTO products (name, brand, description, price, detection_class, category, image_url)
+          VALUES (${p.name}, ${p.brand}, ${p.description}, ${p.price}, ${p.detection_class}, ${p.category}, ${p.image_url})
           ON CONFLICT (detection_class) DO NOTHING
         `);
       }
