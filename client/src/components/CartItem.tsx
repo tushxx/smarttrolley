@@ -2,6 +2,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { formatIndianPrice } from "@/lib/formatPrice";
+import { lineItemSubtotal } from "@/lib/cartPricing";
 import { Minus, Plus, Trash2 } from "lucide-react";
 import type { CartItemWithProduct } from "@shared/schema";
 
@@ -54,7 +55,10 @@ export default function CartItem({ item }: CartItemProps) {
     || PRODUCT_IMAGES[item.product.detectionClass || ""]
     || "https://images.unsplash.com/photo-1586880244386-8b3e34c8382c?w=120&h=120&fit=crop";
 
-  const lineTotal = parseFloat(item.product.price) * item.quantity;
+  const isGrams = item.product.unit === "grams";
+  const measuredG =
+    item.measuredWeight != null ? parseFloat(String(item.measuredWeight)) : 0;
+  const lineTotal = lineItemSubtotal(item);
   const isBusy = updateMutation.isPending || removeMutation.isPending;
 
   return (
@@ -73,11 +77,21 @@ export default function CartItem({ item }: CartItemProps) {
       <div className="flex-1 min-w-0">
         <p className="text-sm font-semibold text-gray-900 truncate">{item.product.name}</p>
         <p className="text-xs text-gray-400 mt-0.5 truncate">
-          {item.product.brand || item.product.detectionClass}
+          {isGrams ? (
+            <>
+              {item.product.weight
+                ? `${formatIndianPrice(parseFloat(String(item.product.price)))} per ${item.product.weight} g`
+                : item.product.brand || item.product.detectionClass}
+              {measuredG > 0 ? ` · weighed ${Math.round(measuredG)} g` : " · place on scale"}
+            </>
+          ) : (
+            item.product.brand || item.product.detectionClass
+          )}
         </p>
       </div>
 
-      {/* Qty stepper */}
+      {/* Qty stepper — hidden for weighed produce (qty stays 1) */}
+      {!isGrams ? (
       <div className="flex items-center gap-1">
         <button
           onClick={() => handleQty(-1)}
@@ -95,11 +109,14 @@ export default function CartItem({ item }: CartItemProps) {
           <Plus className="h-3 w-3 text-gray-500" />
         </button>
       </div>
+      ) : (
+        <span className="text-xs text-gray-400 w-20 text-center">By weight</span>
+      )}
 
       {/* Price */}
       <div className="text-right w-20 shrink-0">
         <p className="text-sm font-bold text-gray-900">{formatIndianPrice(lineTotal)}</p>
-        {item.quantity > 1 && (
+        {!isGrams && item.quantity > 1 && (
           <p className="text-[10px] text-gray-400">{formatIndianPrice(parseFloat(item.product.price))} each</p>
         )}
       </div>

@@ -30,6 +30,10 @@ export interface IStorage {
   createCart(userId: string): Promise<ShoppingCart>;
   addItemToCart(cartId: string, item: InsertCartItem): Promise<CartItem>;
   updateCartItemQuantity(cartItemId: string, quantity: number): Promise<CartItem>;
+  updateCartItem(
+    cartItemId: string,
+    updates: { quantity?: number; measuredWeight?: string | null },
+  ): Promise<CartItem>;
   removeCartItem(cartItemId: string): Promise<void>;
   getCartWithItems(cartId: string): Promise<CartWithItems | undefined>;
   createOrder(userId: string, cartId: string, orderData: InsertOrder): Promise<Order>;
@@ -51,6 +55,19 @@ const DEMO_PRODUCTS: Product[] = [
   { id: "p3", name: "Moisturizer",    brand: "Nivea",       description: "Daily moisturizing cream for all skin types", price: "299.00", detectionClass: "MOISTURIZER",   imageUrl: "https://images.unsplash.com/photo-1611930022073-b7a4ba5fcccd?w=300&h=300&fit=crop", category: "Personal Care", weight: null, unit: "each", createdAt: new Date() },
   { id: "p4", name: "Soap",           brand: "Dove",        description: "Moisturizing beauty bar soap 100g",           price: "55.00",  detectionClass: "SOAP",          imageUrl: "https://images.unsplash.com/photo-1600857544200-b2f666a9a2ec?w=300&h=300&fit=crop", category: "Personal Care", weight: null, unit: "each", createdAt: new Date() },
   { id: "p5", name: "Water Bottle",   brand: "Bisleri",     description: "Packaged drinking water 500ml",               price: "20.00",  detectionClass: "WATER BOTTLE",  imageUrl: "https://images.unsplash.com/photo-1602143407151-7111542de6e8?w=300&h=300&fit=crop", category: "Beverages",     weight: null, unit: "each", createdAt: new Date() },
+  {
+    id: "p6",
+    name: "Loose Vegetable",
+    brand: "Fresh",
+    description: "Price per 100 g — scan then place produce on the scale",
+    price: "100.00",
+    detectionClass: "LOOSE PRODUCE",
+    imageUrl: "https://images.unsplash.com/photo-1540420773420-3366772f4999?w=300&h=300&fit=crop",
+    category: "Produce",
+    weight: "100.000",
+    unit: "grams",
+    createdAt: new Date(),
+  },
 ];
 
 class MemStorage implements IStorage {
@@ -99,21 +116,45 @@ class MemStorage implements IStorage {
     // find existing
     for (const [key, ci] of Array.from(this.items.entries())) {
       if (ci.cartId === cartId && ci.productId === item.productId) {
-        const updated = { ...ci, quantity: ci.quantity + (item.quantity || 1) };
+        const updated = {
+          ...ci,
+          quantity: ci.quantity + (item.quantity || 1),
+          measuredWeight:
+            item.measuredWeight !== undefined && item.measuredWeight !== null
+              ? item.measuredWeight
+              : ci.measuredWeight,
+        };
         this.items.set(key, updated);
         return updated;
       }
     }
     const product = DEMO_PRODUCTS.find(p => p.id === item.productId)!;
-    const newItem = { id: uuid(), cartId, productId: item.productId, quantity: item.quantity || 1, detectedAt: new Date(), product } as CartItem & { product: Product };
+    const newItem = {
+      id: uuid(),
+      cartId,
+      productId: item.productId,
+      quantity: item.quantity || 1,
+      measuredWeight: item.measuredWeight ?? null,
+      detectedAt: new Date(),
+      product,
+    } as CartItem & { product: Product };
     this.items.set(newItem.id, newItem);
     return newItem;
   }
   async updateCartItemQuantity(cartItemId: string, quantity: number) {
-    const ci = this.items.get(cartItemId)!;
-    const updated = { ...ci, quantity };
-    this.items.set(cartItemId, updated);
-    return updated;
+    return this.updateCartItem(cartItemId, { quantity });
+  }
+  async updateCartItem(
+    cartItemId: string,
+    updates: { quantity?: number; measuredWeight?: string | null },
+  ): Promise<CartItem> {
+    const ci = this.items.get(cartItemId);
+    if (!ci) throw new Error("Cart item not found");
+    const next = { ...ci } as CartItem & { product: Product };
+    if (updates.quantity !== undefined) next.quantity = updates.quantity;
+    if (updates.measuredWeight !== undefined) next.measuredWeight = updates.measuredWeight as any;
+    this.items.set(cartItemId, next);
+    return next;
   }
   async removeCartItem(cartItemId: string) { this.items.delete(cartItemId); }
   async getCartWithItems(cartId: string): Promise<CartWithItems | undefined> {
@@ -172,22 +213,51 @@ export class DatabaseStorage implements IStorage {
   async addItemToCart(cartId: string, item: InsertCartItem) {
     const [existing] = await db!.select().from(cartItems).where(and(eq(cartItems.cartId, cartId), eq(cartItems.productId, item.productId)));
     if (existing) {
-      const [u] = await db!.update(cartItems).set({ quantity: existing.quantity + (item.quantity || 1) }).where(eq(cartItems.id, existing.id)).returning();
+      const [u] = await db!
+        .update(cartItems)
+        .set({
+          quantity: existing.quantity + (item.quantity || 1),
+          ...(item.measuredWeight !== undefined && item.measuredWeight !== null
+            ? { measuredWeight: item.measuredWeight }
+            : {}),
+        })
+        .where(eq(cartItems.id, existing.id))
+        .returning();
       return u;
     }
     const [n] = await db!.insert(cartItems).values({ ...item, cartId }).returning();
     return n;
   }
   async updateCartItemQuantity(cartItemId: string, quantity: number) {
-    const [u] = await db!.update(cartItems).set({ quantity }).where(eq(cartItems.id, cartItemId)).returning();
+    return this.updateCartItem(cartItemId, { quantity });
+  }
+  async updateCartItem(
+    cartItemId: string,
+    updates: { quantity?: number; measuredWeight?: string | null },
+  ): Promise<CartItem> {
+    const data: Record<string, unknown> = {};
+    if (updates.quantity !== undefined) data.quantity = updates.quantity;
+    if (updates.measuredWeight !== undefined) data.measuredWeight = updates.measuredWeight;
+    const [u] = await db!.update(cartItems).set(data).where(eq(cartItems.id, cartItemId)).returning();
     return u;
   }
   async removeCartItem(cartItemId: string) { await db!.delete(cartItems).where(eq(cartItems.id, cartItemId)); }
   async getCartWithItems(cartId: string): Promise<CartWithItems | undefined> {
     const [cart] = await db!.select().from(shoppingCarts).where(eq(shoppingCarts.id, cartId));
     if (!cart) return undefined;
-    const items = await db!.select({ id: cartItems.id, cartId: cartItems.cartId, productId: cartItems.productId, quantity: cartItems.quantity, detectedAt: cartItems.detectedAt, product: products })
-      .from(cartItems).leftJoin(products, eq(cartItems.productId, products.id)).where(eq(cartItems.cartId, cartId));
+    const items = await db!
+      .select({
+        id: cartItems.id,
+        cartId: cartItems.cartId,
+        productId: cartItems.productId,
+        quantity: cartItems.quantity,
+        measuredWeight: cartItems.measuredWeight,
+        detectedAt: cartItems.detectedAt,
+        product: products,
+      })
+      .from(cartItems)
+      .leftJoin(products, eq(cartItems.productId, products.id))
+      .where(eq(cartItems.cartId, cartId));
     return { ...cart, items: items as CartItemWithProduct[] };
   }
   async createOrder(userId: string, cartId: string, orderData: InsertOrder) {

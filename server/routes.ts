@@ -253,6 +253,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  app.post('/api/weight/tare', isAuthenticated, async (_req, res) => {
+    try {
+      const resp = await fetch(`${DETECTION_SERVICE_URL}/weight/tare`, {
+        method: "POST",
+        signal: AbortSignal.timeout(3000),
+      });
+      const data = await resp.json();
+      if (!resp.ok) return res.status(502).json(data);
+      res.json(data);
+    } catch (e: any) {
+      res.status(502).json({ ok: false, message: "Weight tare failed: " + e.message });
+    }
+  });
+
   // ── Cart ────────────────────────────────────────────────────────────────────
   app.get('/api/cart', isAuthenticated, async (req: any, res) => {
     try {
@@ -286,11 +300,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ message: "Item already in cart", code: "ALREADY_IN_CART" });
       }
 
-      const cartItem = await storage.addItemToCart(cart!.id, { 
-        ...itemData, 
-        quantity: 1, 
-        measuredWeight: req.body.measuredWeight?.toString() 
-      } as any);
+      const cartItem = await storage.addItemToCart(cart!.id, {
+        productId: itemData.productId,
+        quantity: itemData.quantity ?? 1,
+        measuredWeight: itemData.measuredWeight ?? undefined,
+      });
       res.status(201).json(cartItem);
     } catch (error) {
       if (error instanceof z.ZodError) {
@@ -300,17 +314,39 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.patch('/api/cart/items/:itemId', isAuthenticated, async (req, res) => {
+  app.patch('/api/cart/items/:itemId', isAuthenticated, async (req: any, res) => {
     try {
       const { itemId } = req.params;
-      const { quantity } = req.body;
-      if (quantity <= 0) {
+      const patchSchema = z
+        .object({
+          quantity: z.number().int().positive().optional(),
+          measuredWeight: z.union([z.string(), z.null()]).optional(),
+        })
+        .refine((d) => d.quantity !== undefined || d.measuredWeight !== undefined, {
+          message: "Provide quantity and/or measuredWeight",
+        });
+
+      const body = patchSchema.parse(req.body);
+      const userId = req.sessionUser.id;
+      const cart = await storage.getActiveCart(userId);
+      if (!cart?.items.some((i) => i.id === itemId)) {
+        return res.status(404).json({ message: "Cart item not found" });
+      }
+
+      if (body.quantity !== undefined && body.quantity <= 0) {
         await storage.removeCartItem(itemId);
         return res.json({ message: "Item removed" });
       }
-      const updated = await storage.updateCartItemQuantity(itemId, quantity);
+
+      const updated = await storage.updateCartItem(itemId, {
+        ...(body.quantity !== undefined ? { quantity: body.quantity } : {}),
+        ...(body.measuredWeight !== undefined ? { measuredWeight: body.measuredWeight } : {}),
+      });
       res.json(updated);
-    } catch {
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: "Invalid update", errors: error.errors });
+      }
       res.status(500).json({ message: "Failed to update cart item" });
     }
   });
@@ -398,6 +434,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const cart = await storage.getCartWithItems(cartId);
       if (!cart || cart.userId !== userId) {
         return res.status(404).json({ message: "Cart not found" });
+      }
+
+      for (const item of cart.items) {
+        if (item.product.unit === "grams") {
+          const m = parseFloat(item.measuredWeight?.toString() || "0");
+          if (!item.measuredWeight || !Number.isFinite(m) || m < 1) {
+            return res.status(400).json({
+              message: `Weigh "${item.product.name}" on the scale before payment (sold by weight).`,
+            });
+          }
+        }
       }
 
       const subtotal = cart.items.reduce(

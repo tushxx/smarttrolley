@@ -11,6 +11,7 @@ import { formatIndianPrice } from "@/lib/formatPrice";
 import { ArrowLeft, CreditCard, Shield, Smartphone, CreditCard as CardIcon, CheckCircle, Star, Lock, Package } from "lucide-react";
 import { useLocation } from "wouter";
 import type { CartWithItems } from "@shared/schema";
+import { cartSubtotal } from "@/lib/cartPricing";
 
 const CheckoutForm = ({ cart }: { cart: CartWithItems }) => {
   const [, setLocation] = useLocation();
@@ -120,7 +121,7 @@ const CheckoutForm = ({ cart }: { cart: CartWithItems }) => {
     createOrderMutation.mutate();
   };
 
-  const subtotal = cart.items.reduce((sum, item) => sum + (parseFloat(item.product.price) * item.quantity), 0);
+  const subtotal = cartSubtotal(cart.items);
   const tax = subtotal * 0.08; // 8% tax
   const savings = subtotal * 0.05; // 5% smart savings
   const total = subtotal + tax;

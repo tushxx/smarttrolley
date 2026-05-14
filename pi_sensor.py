@@ -14,6 +14,11 @@ WIRING (BCM pin numbers):
   PIR sensor OUT → GPIO 17  (change PIR_PIN below if different)
   Pi camera     → CSI ribbon cable (standard)
 
+  HX711 load cell (optional — used by detection_service.py on the same Pi):
+  DOUT → GPIO 11
+  PD_SCK → GPIO 13
+  (Override with env HX711_DOUT_PIN / HX711_SCK_PIN if wired differently.)
+
 SETUP ON PI:
   pip install RPi.GPIO picamera2 requests pillow
   # Then run:

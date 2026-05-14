@@ -77,9 +77,14 @@ export async function initializeDatabase() {
         cart_id VARCHAR NOT NULL REFERENCES shopping_carts(id),
         product_id VARCHAR NOT NULL REFERENCES products(id),
         quantity INTEGER NOT NULL DEFAULT 1,
+        measured_weight DECIMAL(10,3),
         detected_at TIMESTAMP DEFAULT NOW()
       )
     `);
+
+    await db.execute(sql`
+      ALTER TABLE cart_items ADD COLUMN IF NOT EXISTS measured_weight DECIMAL(10,3)
+    `).catch(() => {});
 
     // Orders
     await db.execute(sql`
@@ -169,6 +174,23 @@ export async function initializeDatabase() {
           ON CONFLICT (detection_class) DO NOTHING
         `);
       }
+
+      // Sold-by-weight example: ₹100 per 100 g (map YOLO class LOOSE PRODUCE when your model supports it)
+      await db.execute(sql`
+        INSERT INTO products (name, brand, description, price, detection_class, category, image_url, weight, unit)
+        VALUES (
+          'Loose Vegetable',
+          'Fresh',
+          'Price per 100 g — scan then place on scale',
+          100.00,
+          'LOOSE PRODUCE',
+          'Produce',
+          'https://images.unsplash.com/photo-1540420773420-3366772f4999?w=300&h=300&fit=crop',
+          100,
+          'grams'
+        )
+        ON CONFLICT (detection_class) DO NOTHING
+      `);
 
       console.log('✅ Products seeded for YOLO classes: APPY FIZZ, FROOTI, MOISTURIZER, SOAP, WATER BOTTLE');
     }

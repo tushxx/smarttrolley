@@ -3,20 +3,21 @@ YOLO Item Detection Service — with Pi Camera streaming + ONNX acceleration
 ============================================================================
 Runs on port 8001.
 
-Architecture:
-─────────────
-• A single background thread opens the Pi camera ONCE and continuously
-  captures frames, compressing each to JPEG and storing it in
-  `_latest_jpeg` (bytes). This avoids any re-open / lock-contention issues.
-• GET /stream   — MJPEG multipart stream served directly from `_latest_jpeg`
-• GET /capture  — Returns latest frame as base64 JSON for YOLO detection
-• POST /detect  — Receives a base64 image and runs YOLO inference
-• GET /health   — Service health status
-• GET /model-info — Detailed model + performance info
+Wide-angle Pi camera:
+  • Full-resolution capture (see CAM_MAIN_WIDTH / CAM_MAIN_HEIGHT).
+  • Before YOLO, a configurable center crop (DETECTION_CENTER_CROP) removes
+    distorted edges so the product uses more of the model input — better accuracy.
 
-Performance targets (Raspberry Pi 5, no GPU):
-  • PyTorch path:  ~300-500 ms per frame
-  • ONNX path:     ~50-150 ms per frame  ← preferred
+Speed (milliseconds):
+  • Prefer ONNX (`pip install onnxruntime`). Delete stale *.onnx after changing INFERENCE_SIZE.
+  • Lower INFERENCE_SIZE (e.g. 288) for fewer ms; re-export ONNX after changing.
+
+Environment (examples):
+  DETECTION_CENTER_CROP=0.72   # tighter center (strong wide-angle)
+  CAM_MAIN_WIDTH=1640 CAM_MAIN_HEIGHT=1232
+  INFERENCE_SIZE=320
+  CONFIDENCE_THRESHOLD=0.38
+  ONNX_INTRA_OP_THREADS=4
 """
 
 import sys
@@ -116,8 +117,19 @@ MODEL_PATHS = [
     "model.pt",
 ]
 
-INFERENCE_SIZE = 320       # Smaller = faster inference; YOLO handles downscale well
-CONFIDENCE_THRESHOLD = 0.45  # Low threshold; frontend multi-frame logic filters noise
+# Inference / camera (override with env on the Pi)
+# Smaller INFERENCE_SIZE = fewer ms (delete stale *.onnx next to .pt to re-export if you change size).
+INFERENCE_SIZE = int(os.environ.get("INFERENCE_SIZE", "320"))
+CONFIDENCE_THRESHOLD = float(os.environ.get("CONFIDENCE_THRESHOLD", "0.40"))
+# Wide-angle lenses: use a center crop before YOLO so the product fills more of the 320² tensor (1.0 = no crop).
+DETECTION_CENTER_CROP = float(os.environ.get("DETECTION_CENTER_CROP", "0.78"))
+CAM_MAIN_WIDTH = int(os.environ.get("CAM_MAIN_WIDTH", "1280"))
+CAM_MAIN_HEIGHT = int(os.environ.get("CAM_MAIN_HEIGHT", "720"))
+CAM_JPEG_QUALITY = int(os.environ.get("CAM_JPEG_QUALITY", "72"))
+ONNX_INTRA_OP_THREADS = int(os.environ.get("ONNX_INTRA_OP_THREADS", "4"))
+
+# Last full decode+crop+resize+inference timing (ms), for /capture-and-detect JSON
+_last_infer_pipeline_ms: float = 0.0
 
 # ── Performance tracking ─────────────────────────────────────────────────────
 _inference_times = []  # last N inference durations in ms
@@ -152,11 +164,13 @@ def _try_export_onnx(pt_path: str) -> str | None:
     if not ULTRALYTICS_OK:
         return None
 
-    print(f"[ONNX] Exporting {pt_path} → ONNX (one-time, may take 30-60s)...")
+    print(f"[ONNX] Exporting {pt_path} → ONNX (one-time, may take 30-60s) imgsz={INFERENCE_SIZE}...")
     try:
         from ultralytics import YOLO  # type: ignore
         temp_model = YOLO(pt_path)
-        export_path = temp_model.export(format="onnx", imgsz=320, half=False, simplify=True)
+        export_path = temp_model.export(
+            format="onnx", imgsz=INFERENCE_SIZE, half=False, simplify=True
+        )
         if export_path and os.path.exists(export_path):
             print(f"[ONNX] ✅ Exported to: {export_path}")
             return str(export_path)
@@ -170,8 +184,8 @@ def _try_export_onnx(pt_path: str) -> str | None:
 
 
 # ── ONNX Inference helpers ───────────────────────────────────────────────────
-def _load_onnx_session(onnx_path: str):
-    """Load ONNX model into onnxruntime InferenceSession."""
+def _load_onnx_session(onnx_path: str) -> bool:
+    """Load ONNX model. Returns False if graph input size mismatches INFERENCE_SIZE."""
     global ort_session
     providers = ["CPUExecutionProvider"]
     # Try CoreML on macOS for extra speed
@@ -183,24 +197,62 @@ def _load_onnx_session(onnx_path: str):
 
     sess_opts = ort.SessionOptions()
     sess_opts.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_ALL
-    sess_opts.intra_op_num_threads = 4  # Pi 5 has 4 cores
+    sess_opts.intra_op_num_threads = ONNX_INTRA_OP_THREADS
     sess_opts.inter_op_num_threads = 1
 
-    ort_session = ort.InferenceSession(onnx_path, sess_options=sess_opts, providers=providers)
+    sess = ort.InferenceSession(onnx_path, sess_options=sess_opts, providers=providers)
+    inp0 = sess.get_inputs()[0]
+    shp = inp0.shape
+    if len(shp) == 4 and all(isinstance(d, int) for d in shp[2:4]):
+        h, w = int(shp[2]), int(shp[3])
+        if h != INFERENCE_SIZE or w != INFERENCE_SIZE:
+            print(
+                f"[ONNX] ❌ Model expects {h}x{w} but INFERENCE_SIZE={INFERENCE_SIZE}. "
+                f"Delete {onnx_path!r} (or set INFERENCE_SIZE={h}) and restart to re-export."
+            )
+            return False
+    ort_session = sess
     print(f"[ONNX] ✅ Session loaded — providers: {ort_session.get_providers()}")
+    return True
 
 
 # Pre-allocated buffer for ONNX input — avoids GC pressure on every frame
 _onnx_input_buf = np.zeros((1, 3, INFERENCE_SIZE, INFERENCE_SIZE), dtype=np.float32)
 
 
+def _center_crop_bgr(img: np.ndarray, fraction: float) -> np.ndarray:
+    """Keep the middle `fraction` of width/height (reduces fisheye / wide-angle edge stretch)."""
+    if fraction >= 0.999 or fraction <= 0.05:
+        return img
+    h, w = img.shape[:2]
+    nw = max(8, int(w * fraction))
+    nh = max(8, int(h * fraction))
+    x0 = (w - nw) // 2
+    y0 = (h - nh) // 2
+    return img[y0 : y0 + nh, x0 : x0 + nw]
+
+
+def _bgr_prepare_for_yolo(bgr: np.ndarray) -> np.ndarray:
+    """Center-crop for wide-angle, then letterbox-free resize to model square input."""
+    import cv2  # type: ignore
+
+    cropped = _center_crop_bgr(bgr, DETECTION_CENTER_CROP)
+    return cv2.resize(
+        cropped,
+        (INFERENCE_SIZE, INFERENCE_SIZE),
+        interpolation=cv2.INTER_LINEAR,
+    )
+
+
 def _onnx_preprocess_cv2(jpeg_bytes: bytes) -> np.ndarray:
     """JPEG bytes → ONNX-ready float32 tensor [1, 3, H, W] using cv2 (fast)."""
     import cv2  # type: ignore
     arr = np.frombuffer(jpeg_bytes, dtype=np.uint8)
-    img = cv2.imdecode(arr, cv2.IMREAD_COLOR)        # BGR HWC
-    img = cv2.resize(img, (INFERENCE_SIZE, INFERENCE_SIZE), interpolation=cv2.INTER_LINEAR)
-    img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)       # RGB HWC
+    img = cv2.imdecode(arr, cv2.IMREAD_COLOR)  # BGR HWC
+    if img is None:
+        raise ValueError("cv2.imdecode failed")
+    img = _bgr_prepare_for_yolo(img)
+    img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)  # RGB HWC
     buf = _onnx_input_buf
     buf[0] = img.transpose(2, 0, 1).astype(np.float32) / 255.0  # CHW
     return buf
@@ -208,11 +260,15 @@ def _onnx_preprocess_cv2(jpeg_bytes: bytes) -> np.ndarray:
 
 def _onnx_preprocess(image: Image.Image) -> np.ndarray:
     """PIL Image → ONNX-ready float32 tensor [1, 3, H, W] (fallback)."""
-    target = INFERENCE_SIZE
-    img = image.resize((target, target), Image.BILINEAR)
-    arr = np.array(img, dtype=np.float32) / 255.0   # HWC 0-1
-    arr = arr.transpose(2, 0, 1)                     # CHW
-    arr = np.expand_dims(arr, axis=0)                # NCHW
+    import cv2  # type: ignore
+
+    rgb = np.array(image.convert("RGB"))
+    bgr = cv2.cvtColor(rgb, cv2.COLOR_RGB2BGR)
+    small = _bgr_prepare_for_yolo(bgr)
+    small_rgb = cv2.cvtColor(small, cv2.COLOR_BGR2RGB)
+    arr = small_rgb.astype(np.float32) / 255.0  # HWC 0-1
+    arr = arr.transpose(2, 0, 1)  # CHW
+    arr = np.expand_dims(arr, axis=0)  # NCHW
     return np.ascontiguousarray(arr)
 
 
@@ -267,11 +323,12 @@ def _run_pytorch_inference(image: Image.Image) -> list:
     if model is None:
         return []
 
-    # Always resize to INFERENCE_SIZE for speed
-    if image.width != INFERENCE_SIZE or image.height != INFERENCE_SIZE:
-        image = image.resize((INFERENCE_SIZE, INFERENCE_SIZE), Image.BILINEAR)
+    import cv2  # type: ignore
 
-    results = model(image, verbose=False, imgsz=INFERENCE_SIZE)
+    rgb = np.array(image.convert("RGB"))
+    bgr = cv2.cvtColor(rgb, cv2.COLOR_RGB2BGR)
+    small_bgr = _bgr_prepare_for_yolo(bgr)
+    results = model(small_bgr, verbose=False, imgsz=INFERENCE_SIZE)
     detections = []
     for result in results:
         boxes = result.boxes
@@ -297,7 +354,9 @@ def _run_pytorch_inference_fast(jpeg_bytes: bytes) -> list:
     import cv2  # type: ignore
     arr = np.frombuffer(jpeg_bytes, dtype=np.uint8)
     img = cv2.imdecode(arr, cv2.IMREAD_COLOR)  # BGR
-    img = cv2.resize(img, (INFERENCE_SIZE, INFERENCE_SIZE), interpolation=cv2.INTER_LINEAR)
+    if img is None:
+        return []
+    img = _bgr_prepare_for_yolo(img)
     # ultralytics accepts numpy BGR arrays directly
     results = model(img, verbose=False, imgsz=INFERENCE_SIZE)
     detections = []
@@ -321,6 +380,7 @@ def _run_pytorch_inference_fast(jpeg_bytes: bytes) -> list:
 # ── Unified inference ────────────────────────────────────────────────────────
 def run_inference(image: Image.Image) -> list:
     """Run inference using the best available engine (ONNX or PyTorch). PIL input."""
+    global _last_infer_pipeline_ms
     t0 = time.time()
     if INFERENCE_ENGINE == "onnx":
         dets = _run_onnx_inference(image)
@@ -329,12 +389,14 @@ def run_inference(image: Image.Image) -> list:
     else:
         return []
     elapsed = (time.time() - t0) * 1000
+    _last_infer_pipeline_ms = elapsed
     _record_timing(elapsed)
     return dets
 
 
 def run_inference_from_jpeg(jpeg_bytes: bytes) -> list:
     """Run inference directly from JPEG bytes — fastest path, skips PIL."""
+    global _last_infer_pipeline_ms
     t0 = time.time()
     if INFERENCE_ENGINE == "onnx":
         dets = _run_onnx_inference_fast(jpeg_bytes)
@@ -343,6 +405,7 @@ def run_inference_from_jpeg(jpeg_bytes: bytes) -> list:
     else:
         return []
     elapsed = (time.time() - t0) * 1000
+    _last_infer_pipeline_ms = elapsed
     _record_timing(elapsed)
     return dets
 
@@ -379,9 +442,12 @@ def load_model():
             onnx_path = _try_export_onnx(pt_path)
             if onnx_path:
                 try:
-                    _load_onnx_session(onnx_path)
-                    INFERENCE_ENGINE = "onnx"
-                    print("[INFO] 🚀 Using ONNX Runtime for inference (fast mode)")
+                    if _load_onnx_session(onnx_path):
+                        INFERENCE_ENGINE = "onnx"
+                        print("[INFO] 🚀 Using ONNX Runtime for inference (fast mode)")
+                    else:
+                        INFERENCE_ENGINE = "pytorch"
+                        print("[INFO] Using PyTorch (ONNX input size mismatch or load skipped)")
                 except Exception as e:
                     print(f"[WARN] ONNX session load failed, falling back to PyTorch: {e}")
                     INFERENCE_ENGINE = "pytorch"
@@ -395,6 +461,11 @@ def load_model():
         dummy = Image.fromarray(np.zeros((INFERENCE_SIZE, INFERENCE_SIZE, 3), dtype="uint8"))
         run_inference(dummy)
         print(f"[INFO] ✅ Model warm — inference engine: {INFERENCE_ENGINE}")
+        print(
+            f"[INFO] Wide-angle / speed: crop={DETECTION_CENTER_CROP} "
+            f"cam={CAM_MAIN_WIDTH}x{CAM_MAIN_HEIGHT} infer={INFERENCE_SIZE} "
+            f"conf≥{CONFIDENCE_THRESHOLD}"
+        )
 
         stats = _get_timing_stats()
         if stats["samples"] > 0:
@@ -432,7 +503,7 @@ def _camera_thread():
 
         cam = Picamera2()
         cfg = cam.create_video_configuration(
-            main={"size": (1280, 720), "format": "RGB888"},
+            main={"size": (CAM_MAIN_WIDTH, CAM_MAIN_HEIGHT), "format": "RGB888"},
             controls={"FrameDurationLimits": (33333, 33333)},  # ~30 fps
         )
         cam.configure(cfg)
@@ -441,13 +512,13 @@ def _camera_thread():
 
         _cam_mode = "picamera2"
         _cam_ok   = True
-        print("[CAM] ✅ picamera2 running")
+        print(f"[CAM] ✅ picamera2 {CAM_MAIN_WIDTH}x{CAM_MAIN_HEIGHT} (wide / HQ); JPEG Q={CAM_JPEG_QUALITY}")
 
         while True:
             try:
                 rgb   = cam.capture_array()
                 bgr   = cv2.cvtColor(rgb, cv2.COLOR_RGB2BGR)
-                ok, buf = cv2.imencode(".jpg", bgr, [cv2.IMWRITE_JPEG_QUALITY, 70])
+                ok, buf = cv2.imencode(".jpg", bgr, [cv2.IMWRITE_JPEG_QUALITY, CAM_JPEG_QUALITY])
                 if ok:
                     _latest_jpeg = bytes(buf)
                     _frame_event.set()
@@ -466,8 +537,8 @@ def _camera_thread():
         for idx in range(4):
             cap = cv2.VideoCapture(idx)
             if cap.isOpened():
-                cap.set(cv2.CAP_PROP_FRAME_WIDTH,  1280)
-                cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 720)
+                cap.set(cv2.CAP_PROP_FRAME_WIDTH, CAM_MAIN_WIDTH)
+                cap.set(cv2.CAP_PROP_FRAME_HEIGHT, CAM_MAIN_HEIGHT)
                 cap.set(cv2.CAP_PROP_FPS, 30)
                 _cam_mode = "opencv"
                 _cam_ok   = True
@@ -480,7 +551,7 @@ def _camera_thread():
         while True:
             ok, frame = cap.read()
             if ok:
-                _, buf = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, 70])
+                _, buf = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, CAM_JPEG_QUALITY])
                 _latest_jpeg = bytes(buf)
                 _frame_event.set()
                 _frame_event.clear()
@@ -538,11 +609,13 @@ def health():
         "status": "ok",
         "cam_mode": _cam_mode,
         "cam_ok": _cam_ok,
+        "cam_resolution": [CAM_MAIN_WIDTH, CAM_MAIN_HEIGHT],
         "model_loaded": MODEL_LOADED,
         "ultralytics_ok": ULTRALYTICS_OK,
         "inference_engine": INFERENCE_ENGINE,
         "inference_size": INFERENCE_SIZE,
         "confidence_threshold": CONFIDENCE_THRESHOLD,
+        "detection_center_crop": DETECTION_CENTER_CROP,
         "model_classes": list(model_names.values()),
     })
 
@@ -558,6 +631,8 @@ def model_info():
         "onnx_available": ONNX_OK,
         "inference_size": INFERENCE_SIZE,
         "confidence_threshold": CONFIDENCE_THRESHOLD,
+        "detection_center_crop": DETECTION_CENTER_CROP,
+        "cam_resolution": [CAM_MAIN_WIDTH, CAM_MAIN_HEIGHT],
         "classes": model_names,
         "class_count": len(model_names),
         "timing": stats,
@@ -614,10 +689,10 @@ def capture_and_detect():
     t0 = time.time()
 
     if not _cam_ok or not _latest_jpeg:
-        return jsonify({"detected": False, "message": "Camera not ready"})
+        return jsonify({"detected": False, "message": "Camera not ready", "infer_pipeline_ms": 0})
 
     if not MODEL_LOADED:
-        return jsonify({"detected": False, "message": "Model not loaded"})
+        return jsonify({"detected": False, "message": "Model not loaded", "infer_pipeline_ms": 0})
 
     # Fast path: decode JPEG with cv2 directly — skips PIL entirely
     jpeg_snap = _latest_jpeg  # snapshot to avoid race
@@ -629,7 +704,14 @@ def capture_and_detect():
     elapsed_ms = round((time.time() - t0) * 1000)
 
     if not all_detections:
-        return jsonify({"detected": False, "all_detections": [], "ms": elapsed_ms})
+        return jsonify({
+            "detected": False,
+            "all_detections": [],
+            "ms": elapsed_ms,
+            "infer_pipeline_ms": round(_last_infer_pipeline_ms, 1),
+            "engine": INFERENCE_ENGINE,
+            "detection_center_crop": DETECTION_CENTER_CROP,
+        })
 
     best = max(all_detections, key=lambda d: d["confidence"])
     return jsonify({
@@ -638,8 +720,76 @@ def capture_and_detect():
         "confidence":     best["confidence"],
         "all_detections": all_detections,
         "ms":             elapsed_ms,
+        "infer_pipeline_ms": round(_last_infer_pipeline_ms, 1),
         "engine":         INFERENCE_ENGINE,
+        "detection_center_crop": DETECTION_CENTER_CROP,
     })
+
+
+# ── HX711 load cell (GPIO DOUT / SCK — BCM pins via env, default 11 / 13) ─────
+def _start_hx711_if_needed():
+    try:
+        from hx711_weight import start_weight_reader
+
+        dout = int(os.environ.get("HX711_DOUT_PIN", "11"))
+        pd_sck = int(os.environ.get("HX711_SCK_PIN", "13"))
+        start_weight_reader(dout, pd_sck)
+    except Exception as e:
+        print(f"[WEIGHT] HX711 reader not started: {e}")
+
+
+@app.route("/weight", methods=["GET"])
+def weight_read():
+    """Latest smoothed weight in grams (HX711). Proxied by Node as GET /api/weight."""
+    _start_hx711_if_needed()
+    try:
+        from hx711_weight import get_weight_grams
+
+        w_g, raw, ok = get_weight_grams()
+        return jsonify(
+            {
+                "weight_g": round(float(w_g), 2),
+                "raw": raw,
+                "sensor_ok": ok,
+                "pins": {
+                    "dout_bcm": int(os.environ.get("HX711_DOUT_PIN", "11")),
+                    "sck_bcm": int(os.environ.get("HX711_SCK_PIN", "13")),
+                },
+            }
+        )
+    except Exception as e:
+        return jsonify({"weight_g": 0.0, "sensor_ok": False, "error": str(e)}), 200
+
+
+@app.route("/weight/tare", methods=["POST"])
+def weight_tare():
+    """Zero the scale with the current basket / platform on the load cell."""
+    _start_hx711_if_needed()
+    try:
+        from hx711_weight import tare
+
+        return jsonify(tare())
+    except Exception as e:
+        return jsonify({"ok": False, "message": str(e)}), 500
+
+
+@app.route("/weight/calibrate", methods=["POST"])
+def weight_calibrate():
+    """
+    Body JSON: { "known_mass_g": 500 }
+    After taring empty, place a known calibration mass on the scale and call this.
+    """
+    _start_hx711_if_needed()
+    try:
+        from hx711_weight import calibrate_with_known_mass
+
+        data = request.get_json(silent=True) or {}
+        mass = data.get("known_mass_g") or data.get("reference_mass_g")
+        if mass is None:
+            return jsonify({"ok": False, "message": "known_mass_g required"}), 400
+        return jsonify(calibrate_with_known_mass(float(mass)))
+    except Exception as e:
+        return jsonify({"ok": False, "message": str(e)}), 500
 
 
 if __name__ == "__main__":

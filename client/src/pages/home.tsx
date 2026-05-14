@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
@@ -9,6 +9,14 @@ import CartItem from "@/components/CartItem";
 import { Camera, LogOut, ShoppingCart, Scan, CreditCard, ChevronRight, AlertTriangle } from "lucide-react";
 import { useLocation } from "wouter";
 import type { CartWithItems } from "@shared/schema";
+import {
+  expectedCartWeightG,
+  lastPendingGramItem,
+  cartSubtotal,
+  WEIGHT_ERROR_THRESHOLD_G,
+  WEIGHT_ASSIGN_MIN_G,
+  hasUnweighedGramProduct,
+} from "@/lib/cartPricing";
 
 function Logo() {
   return (
@@ -32,6 +40,13 @@ const DETECTABLE = [
   { name: "Water Bottle",   emoji: "💧" },
 ];
 
+type WeightApiResponse = {
+  weight_g: number;
+  raw?: number | null;
+  sensor_ok?: boolean;
+  error?: string;
+};
+
 export default function Home() {
   const [, setLocation] = useLocation();
   const [showDetector, setShowDetector] = useState(false);
@@ -44,15 +59,15 @@ export default function Home() {
     retry: false,
   });
 
-  const { data: weightData } = useQuery({
+  const { data: weightData } = useQuery<WeightApiResponse>({
     queryKey: ["/api/weight"],
     refetchInterval: 1000, // poll every 1 second
     retry: false,
   });
 
   const addToCartMutation = useMutation({
-    mutationFn: async (payload: { productId: string, measuredWeight?: string }) => {
-      const res = await apiRequest("POST", "/api/cart/items", { ...payload, quantity: 1 });
+    mutationFn: async (payload: { productId: string; measuredWeight?: string; quantity?: number }) => {
+      const res = await apiRequest("POST", "/api/cart/items", { quantity: 1, ...payload });
       if (!res.ok) { const d = await res.json(); throw new Error(d.message || "Failed"); }
       return res.json();
     },
@@ -69,28 +84,71 @@ export default function Home() {
     },
   });
 
-  // Calculate Weights and Anomaly
-  const expectedWeight = cart?.items?.reduce((sum, item) => {
-    if (item.product.unit === 'grams') {
-      return sum + (item.measuredWeight ? parseFloat(item.measuredWeight.toString()) : 0);
-    }
-    return sum + (parseFloat(item.product.weight?.toString() || "0") * item.quantity);
-  }, 0) ?? 0;
+  const syncWeightMutation = useMutation({
+    mutationFn: async ({ itemId, measuredWeight }: { itemId: string; measuredWeight: string }) => {
+      const res = await apiRequest("PATCH", `/api/cart/items/${itemId}`, { measuredWeight });
+      return res.json();
+    },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["/api/cart"] }),
+    onError: (error: Error) => {
+      toast({ title: "Scale sync failed", description: error.message, variant: "destructive" });
+    },
+  });
 
+  const cartRef = useRef(cart);
+  cartRef.current = cart;
+  const weightDataRef = useRef(weightData);
+  weightDataRef.current = weightData;
+
+  useEffect(() => {
+    if (syncWeightMutation.isPending) return;
+    const w = weightData?.weight_g;
+    if (w === undefined) return;
+
+    const c = cartRef.current;
+    if (!c?.items?.length) return;
+
+    const expected = expectedCartWeightG(c);
+    const delta = w - expected;
+    const pending = lastPendingGramItem(c);
+    if (!pending || delta < WEIGHT_ASSIGN_MIN_G) return;
+
+    const t = setTimeout(() => {
+      const c2 = cartRef.current;
+      const wd = weightDataRef.current;
+      const w2 = wd?.weight_g;
+      if (w2 === undefined || !c2?.items?.length) return;
+      const exp2 = expectedCartWeightG(c2);
+      const d2 = w2 - exp2;
+      const pend2 = lastPendingGramItem(c2);
+      if (!pend2 || pend2.id !== pending.id) return;
+      if (d2 < WEIGHT_ASSIGN_MIN_G || Math.abs(d2 - delta) > 8) return;
+      const grams = Math.max(0, Math.round(d2));
+      if (grams >= WEIGHT_ASSIGN_MIN_G) {
+        syncWeightMutation.mutate({ itemId: pend2.id, measuredWeight: String(grams) });
+      }
+    }, 750);
+
+    return () => clearTimeout(t);
+  }, [weightData?.weight_g, cart?.items, syncWeightMutation, syncWeightMutation.isPending]);
+
+  const expectedWeight = expectedCartWeightG(cart);
   const actualWeight = weightData?.weight_g ?? 0;
   const weightDelta = actualWeight - expectedWeight;
-  // Trigger anomaly if > 40g unexplained weight is in the basket, or if item is missing (< -40g)
-  const hasAnomaly = cart?.items?.length ? Math.abs(weightDelta) > 40 : weightDelta > 40;
+  const hasPendingGramAwaitingScale = lastPendingGramItem(cart) !== undefined;
 
-  const handleItemDetected = (product: { id: string, unit: string }) => {
+  const hasUnscannedWeightOnScale =
+    weightDelta > WEIGHT_ERROR_THRESHOLD_G &&
+    !(hasPendingGramAwaitingScale && weightDelta >= WEIGHT_ASSIGN_MIN_G);
+
+  const hasRemovedWithoutScan =
+    !!cart?.items?.length && weightDelta < -WEIGHT_ERROR_THRESHOLD_G;
+
+  const hasAnomaly = hasUnscannedWeightOnScale || hasRemovedWithoutScan;
+
+  const handleItemDetected = (product: { id: string; unit: string }) => {
     setShowDetector(false);
-    if (product.unit === 'grams') {
-      // If there's an unexplained weight in the basket, assume it's this item
-      const mw = weightDelta > 20 ? weightDelta.toString() : "0";
-      addToCartMutation.mutate({ productId: product.id, measuredWeight: mw });
-    } else {
-      addToCartMutation.mutate({ productId: product.id });
-    }
+    addToCartMutation.mutate({ productId: product.id, quantity: 1 });
   };
 
   const handleLogout = async () => {
@@ -103,21 +161,41 @@ export default function Home() {
     if (!cart?.items?.length) {
       toast({ title: "Cart is empty", variant: "destructive" }); return;
     }
+    if (hasUnweighedGramProduct(cart)) {
+      toast({
+        title: "Weight required",
+        description: "Place the scanned loose item on the scale so its weight can be recorded.",
+        variant: "destructive",
+      });
+      return;
+    }
     if (hasAnomaly) {
       toast({ title: "Weight Anomaly", description: "Please resolve the weight error before checkout.", variant: "destructive" }); return;
     }
     setLocation("/checkout");
   };
 
-  const subtotal = cart?.items?.reduce((s, i) => {
-    if (i.product.unit === 'grams' && i.measuredWeight) {
-      const p = parseFloat(i.product.price);
-      const w = parseFloat(i.product.weight?.toString() || "1");
-      const m = parseFloat(i.measuredWeight.toString());
-      return s + (p / w) * m;
-    }
-    return s + parseFloat(i.product.price) * i.quantity;
-  }, 0) ?? 0;
+  const tareMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", "/api/weight/tare", {});
+      const data = await res.json();
+      if (!res.ok || !data.ok) {
+        throw new Error(data.message || "Tare failed");
+      }
+      return data;
+    },
+    onSuccess: (data: { ok?: boolean; message?: string }) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/weight"] });
+      toast({
+        title: "Scale tared",
+        description: data.message || "You can add items to the basket.",
+        className: "bg-white border border-gray-100 shadow-lg text-gray-900",
+      });
+    },
+    onError: (e: Error) => toast({ title: "Tare failed", description: e.message, variant: "destructive" }),
+  });
+
+  const subtotal = cart?.items?.length ? cartSubtotal(cart.items) : 0;
   const tax = subtotal * 0.18;
   const total = subtotal + tax;
   const itemCount = cart?.items?.length ?? 0;
@@ -171,10 +249,10 @@ export default function Home() {
       {hasAnomaly && (
         <div className="bg-red-50 border-b border-red-100 px-6 py-3 flex items-center justify-center gap-3 shadow-inner z-40">
           <AlertTriangle className="h-5 w-5 text-red-600 animate-pulse" />
-          <p className="text-sm font-semibold text-red-700">
-            {weightDelta > 40 
-              ? `Unscanned item detected in the trolley (+${Math.round(weightDelta)}g). Please scan the item.`
-              : `Item removed from trolley without scanning (${Math.round(weightDelta)}g). Please remove it from your cart.`}
+          <p className="text-sm font-semibold text-red-700 text-center max-w-2xl">
+            {hasUnscannedWeightOnScale
+              ? `Weight increased by about ${Math.round(weightDelta)} g but no matching scan was completed. Remove the item or scan it with the camera before continuing.`
+              : `Basket is lighter than your cart by about ${Math.round(-weightDelta)} g. Remove the item from the cart screen or put it back in the basket.`}
           </p>
         </div>
       )}
@@ -229,6 +307,32 @@ export default function Home() {
                 <AlertTriangle className="h-4 w-4 text-red-500" />
               )}
             </button>
+
+            {/* Live scale + tare */}
+            <div className="mb-4 rounded-xl border border-gray-100 bg-gray-50/80 px-3 py-2.5">
+              <div className="flex items-center justify-between text-xs text-gray-500 mb-1">
+                <span>Scale (live)</span>
+                {!weightData?.sensor_ok && (
+                  <span className="text-amber-600">Sensor offline / sim</span>
+                )}
+              </div>
+              <div className="flex items-baseline justify-between">
+                <span className="text-lg font-semibold text-gray-900">
+                  {Math.round(actualWeight)} g
+                </span>
+                <span className="text-[11px] text-gray-400">
+                  expected {Math.round(expectedWeight)} g
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={() => tareMutation.mutate()}
+                disabled={tareMutation.isPending}
+                className="mt-2 w-full text-[11px] font-medium text-green-700 hover:text-green-800 py-1.5 rounded-lg border border-green-200 bg-white hover:bg-green-50/50 disabled:opacity-50"
+              >
+                Tare scale (empty basket first)
+              </button>
+            </div>
 
             {/* Divider */}
             <div className="my-5 border-t border-gray-100" />

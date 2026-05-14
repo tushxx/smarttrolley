@@ -99,11 +99,13 @@ export const insertProductSchema = createInsertSchema(products).omit({
   createdAt: true,
 });
 
-export const insertCartItemSchema = createInsertSchema(cartItems).pick({
-  productId: true,
-  quantity: true,
-  measuredWeight: true,
-});
+export const insertCartItemSchema = createInsertSchema(cartItems)
+  .pick({
+    productId: true,
+    quantity: true,
+    measuredWeight: true,
+  })
+  .partial({ measuredWeight: true });
 
 export const insertOrderSchema = createInsertSchema(orders).pick({
   subtotal: true,
