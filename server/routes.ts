@@ -239,6 +239,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // ── Weight Sensor Proxy ─────────────────────────────────────────────────────
+  app.get('/api/weight', isAuthenticated, async (_req, res) => {
+    try {
+      const resp = await fetch(`${DETECTION_SERVICE_URL}/weight`, {
+        signal: AbortSignal.timeout(2000),
+      });
+      if (!resp.ok) return res.status(502).json({ error: "Weight sensor unavailable" });
+      const data = await resp.json();
+      res.json(data);
+    } catch (e: any) {
+      res.status(502).json({ error: "Weight sensor unavailable: " + e.message });
+    }
+  });
+
   // ── Cart ────────────────────────────────────────────────────────────────────
   app.get('/api/cart', isAuthenticated, async (req: any, res) => {
     try {
@@ -267,10 +281,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       const existing = cart?.items?.find(i => i.productId === itemData.productId);
       if (existing) {
+        // If it's a weighted item and it's already in the cart, we might want to update the weight instead of rejecting it.
+        // For simplicity, we just reject duplicates.
         return res.status(400).json({ message: "Item already in cart", code: "ALREADY_IN_CART" });
       }
 
-      const cartItem = await storage.addItemToCart(cart!.id, { ...itemData, quantity: 1 });
+      const cartItem = await storage.addItemToCart(cart!.id, { 
+        ...itemData, 
+        quantity: 1, 
+        measuredWeight: req.body.measuredWeight?.toString() 
+      } as any);
       res.status(201).json(cartItem);
     } catch (error) {
       if (error instanceof z.ZodError) {
@@ -381,7 +401,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       const subtotal = cart.items.reduce(
-        (sum, item) => sum + parseFloat(item.product.price) * item.quantity, 0
+        (sum, item) => {
+          if (item.product.unit === 'grams' && item.measuredWeight && item.product.weight) {
+            // Price is defined per `product.weight` grams. 
+            // So if product is 100Rs per 100g, and measured is 50g -> (100 / 100) * 50 = 50Rs.
+            const basePrice = parseFloat(item.product.price);
+            const baseWeight = parseFloat(item.product.weight.toString());
+            const measuredWeight = parseFloat(item.measuredWeight.toString());
+            return sum + (basePrice / baseWeight) * measuredWeight;
+          }
+          return sum + parseFloat(item.product.price) * item.quantity;
+        }, 0
       );
       const tax = subtotal * 0.08;
       const total = subtotal + tax;

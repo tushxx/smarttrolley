@@ -8,6 +8,7 @@ interface DetectionProduct {
   price: string;
   imageUrl: string | null;
   detectionClass: string;
+  unit: string;
 }
 
 interface DetectionResult {

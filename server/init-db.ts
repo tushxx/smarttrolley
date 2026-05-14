@@ -170,6 +170,17 @@ export async function initializeDatabase() {
           weight: '530.000',
           unit: 'grams',
         },
+        {
+          name: 'Fresh Vegetables',
+          brand: 'Local Farm',
+          description: 'Fresh seasonal vegetables (sold by weight)',
+          price: '100.00',
+          detection_class: 'VEGETABLE',
+          category: 'Produce',
+          image_url: 'https://images.unsplash.com/photo-1566385101042-1a0aa0c1268c?w=300&h=300&fit=crop',
+          weight: '100.000',
+          unit: 'grams',
+        },
       ];
 
       for (const p of yoloProducts) {

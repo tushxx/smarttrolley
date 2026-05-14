@@ -52,6 +52,7 @@ const DEMO_PRODUCTS: Product[] = [
   { id: "p3", name: "Moisturizer",    brand: "Nivea",       description: "Daily moisturizing cream for all skin types", price: "299.00", detectionClass: "MOISTURIZER",   imageUrl: "https://images.unsplash.com/photo-1611930022073-b7a4ba5fcccd?w=300&h=300&fit=crop", category: "Personal Care", weight: "150.000", unit: "grams", createdAt: new Date() },
   { id: "p4", name: "Soap",           brand: "Dove",        description: "Moisturizing beauty bar soap 100g",           price: "55.00",  detectionClass: "SOAP",          imageUrl: "https://images.unsplash.com/photo-1600857544200-b2f666a9a2ec?w=300&h=300&fit=crop", category: "Personal Care", weight: "115.000", unit: "grams", createdAt: new Date() },
   { id: "p5", name: "Water Bottle",   brand: "Bisleri",     description: "Packaged drinking water 500ml",               price: "20.00",  detectionClass: "WATER BOTTLE",  imageUrl: "https://images.unsplash.com/photo-1602143407151-7111542de6e8?w=300&h=300&fit=crop", category: "Beverages",     weight: "530.000", unit: "grams", createdAt: new Date() },
+  { id: "p6", name: "Fresh Vegetables",brand: "Local Farm", description: "Fresh seasonal vegetables (sold by weight)",  price: "100.00", detectionClass: "VEGETABLE",     imageUrl: "https://images.unsplash.com/photo-1566385101042-1a0aa0c1268c?w=300&h=300&fit=crop", category: "Produce",       weight: "100.000", unit: "grams", createdAt: new Date() },
 ];
 
 class MemStorage implements IStorage {

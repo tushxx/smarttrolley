@@ -29,8 +29,8 @@ import sys
 import time
 
 # ── Configuration ────────────────────────────────────────────────────────────
-DOUT_PIN = 5    # GPIO pin connected to HX711 DOUT
-SCK_PIN  = 6    # GPIO pin connected to HX711 SCK
+DOUT_PIN = 11   # GPIO pin connected to HX711 DOUT
+SCK_PIN  = 13   # GPIO pin connected to HX711 SCK
 GAIN     = 128  # Channel A, gain 128 (most common for single load cell)
 
 

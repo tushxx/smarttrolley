@@ -6,7 +6,7 @@ import { isUnauthorizedError } from "@/lib/authUtils";
 import { useAuth } from "@/hooks/useAuth";
 import ItemDetector from "@/components/ItemDetector";
 import CartItem from "@/components/CartItem";
-import { Camera, LogOut, ShoppingCart, Scan, CreditCard, ChevronRight } from "lucide-react";
+import { Camera, LogOut, ShoppingCart, Scan, CreditCard, ChevronRight, AlertTriangle } from "lucide-react";
 import { useLocation } from "wouter";
 import type { CartWithItems } from "@shared/schema";
 
@@ -44,9 +44,15 @@ export default function Home() {
     retry: false,
   });
 
+  const { data: weightData } = useQuery({
+    queryKey: ["/api/weight"],
+    refetchInterval: 1000, // poll every 1 second
+    retry: false,
+  });
+
   const addToCartMutation = useMutation({
-    mutationFn: async (productId: string) => {
-      const res = await apiRequest("POST", "/api/cart/items", { productId, quantity: 1 });
+    mutationFn: async (payload: { productId: string, measuredWeight?: number }) => {
+      const res = await apiRequest("POST", "/api/cart/items", { ...payload, quantity: 1 });
       if (!res.ok) { const d = await res.json(); throw new Error(d.message || "Failed"); }
       return res.json();
     },
@@ -63,9 +69,28 @@ export default function Home() {
     },
   });
 
-  const handleItemDetected = (product: { id: string }) => {
+  // Calculate Weights and Anomaly
+  const expectedWeight = cart?.items?.reduce((sum, item) => {
+    if (item.product.unit === 'grams') {
+      return sum + (item.measuredWeight ? parseFloat(item.measuredWeight.toString()) : 0);
+    }
+    return sum + (parseFloat(item.product.weight?.toString() || "0") * item.quantity);
+  }, 0) ?? 0;
+
+  const actualWeight = weightData?.weight_g ?? 0;
+  const weightDelta = actualWeight - expectedWeight;
+  // Trigger anomaly if > 40g unexplained weight is in the basket, or if item is missing (< -40g)
+  const hasAnomaly = cart?.items?.length ? Math.abs(weightDelta) > 40 : weightDelta > 40;
+
+  const handleItemDetected = (product: { id: string, unit: string }) => {
     setShowDetector(false);
-    addToCartMutation.mutate(product.id);
+    if (product.unit === 'grams') {
+      // If there's an unexplained weight in the basket, assume it's this item
+      const mw = weightDelta > 20 ? weightDelta : 0;
+      addToCartMutation.mutate({ productId: product.id, measuredWeight: mw });
+    } else {
+      addToCartMutation.mutate({ productId: product.id });
+    }
   };
 
   const handleLogout = async () => {
@@ -78,10 +103,21 @@ export default function Home() {
     if (!cart?.items?.length) {
       toast({ title: "Cart is empty", variant: "destructive" }); return;
     }
+    if (hasAnomaly) {
+      toast({ title: "Weight Anomaly", description: "Please resolve the weight error before checkout.", variant: "destructive" }); return;
+    }
     setLocation("/checkout");
   };
 
-  const subtotal = cart?.items?.reduce((s, i) => s + parseFloat(i.product.price) * i.quantity, 0) ?? 0;
+  const subtotal = cart?.items?.reduce((s, i) => {
+    if (i.product.unit === 'grams' && i.measuredWeight) {
+      const p = parseFloat(i.product.price);
+      const w = parseFloat(i.product.weight?.toString() || "1");
+      const m = parseFloat(i.measuredWeight.toString());
+      return s + (p / w) * m;
+    }
+    return s + parseFloat(i.product.price) * i.quantity;
+  }, 0) ?? 0;
   const tax = subtotal * 0.18;
   const total = subtotal + tax;
   const itemCount = cart?.items?.length ?? 0;
@@ -131,6 +167,18 @@ export default function Home() {
         </div>
       </header>
 
+      {/* ── Anomaly Alert Banner ── */}
+      {hasAnomaly && (
+        <div className="bg-red-50 border-b border-red-100 px-6 py-3 flex items-center justify-center gap-3 shadow-inner z-40">
+          <AlertTriangle className="h-5 w-5 text-red-600 animate-pulse" />
+          <p className="text-sm font-semibold text-red-700">
+            {weightDelta > 40 
+              ? `Unscanned item detected in the trolley (+${Math.round(weightDelta)}g). Please scan the item.`
+              : `Item removed from trolley without scanning (${Math.round(weightDelta)}g). Please remove it from your cart.`}
+          </p>
+        </div>
+      )}
+
       {/* ── Body ── */}
       <div className="flex flex-1 overflow-hidden">
 
@@ -158,7 +206,7 @@ export default function Home() {
             {/* Checkout shortcut */}
             <button
               onClick={proceedToCheckout}
-              disabled={!itemCount}
+              disabled={!itemCount || hasAnomaly}
               className="w-full mt-2 flex items-center justify-between px-4 py-3 border border-gray-200 hover:border-gray-300 hover:bg-gray-50 text-gray-700 rounded-xl transition-all disabled:opacity-40 disabled:cursor-not-allowed group"
             >
               <div className="flex items-center gap-3">
@@ -172,10 +220,13 @@ export default function Home() {
                   </p>
                 </div>
               </div>
-              {itemCount > 0 && (
+              {itemCount > 0 && !hasAnomaly && (
                 <span className="text-xs font-semibold text-gray-900">
                   ₹{total.toLocaleString("en-IN", { maximumFractionDigits: 0 })}
                 </span>
+              )}
+              {hasAnomaly && (
+                <AlertTriangle className="h-4 w-4 text-red-500" />
               )}
             </button>
 
@@ -314,10 +365,11 @@ export default function Home() {
               </div>
               <button
                 onClick={proceedToCheckout}
-                className="flex items-center gap-2 px-6 py-2.5 bg-gray-900 hover:bg-gray-800 text-white text-sm font-semibold rounded-xl transition-colors whitespace-nowrap"
+                disabled={hasAnomaly}
+                className="flex items-center gap-2 px-6 py-2.5 bg-gray-900 hover:bg-gray-800 disabled:bg-gray-400 text-white text-sm font-semibold rounded-xl transition-colors whitespace-nowrap"
               >
                 <CreditCard className="h-4 w-4" />
-                Pay ₹{total.toLocaleString("en-IN", { maximumFractionDigits: 0 })}
+                {hasAnomaly ? "Resolve Error" : `Pay ₹${total.toLocaleString("en-IN", { maximumFractionDigits: 0 })}`}
               </button>
             </div>
           )}

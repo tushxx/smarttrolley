@@ -66,6 +66,7 @@ export const cartItems = pgTable("cart_items", {
   cartId: varchar("cart_id").references(() => shoppingCarts.id).notNull(),
   productId: varchar("product_id").references(() => products.id).notNull(),
   quantity: integer("quantity").notNull().default(1),
+  measuredWeight: decimal("measured_weight", { precision: 10, scale: 3 }),
   detectedAt: timestamp("detected_at").defaultNow(),
 });
 
@@ -101,6 +102,7 @@ export const insertProductSchema = createInsertSchema(products).omit({
 export const insertCartItemSchema = createInsertSchema(cartItems).pick({
   productId: true,
   quantity: true,
+  measuredWeight: true,
 });
 
 export const insertOrderSchema = createInsertSchema(orders).pick({
