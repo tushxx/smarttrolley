@@ -738,6 +738,18 @@ def _start_hx711_if_needed():
         print(f"[WEIGHT] HX711 reader not started: {e}")
 
 
+@app.route("/weight/debug", methods=["GET"])
+def weight_debug():
+    """Diagnostics: raw samples, offset, scale — use while troubleshooting calibration."""
+    _start_hx711_if_needed()
+    try:
+        from hx711_weight import debug_snapshot
+
+        return jsonify(debug_snapshot())
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
 @app.route("/weight", methods=["GET"])
 def weight_read():
     """Latest smoothed weight in grams (HX711). Proxied by Node as GET /api/weight."""

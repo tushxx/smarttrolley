@@ -36,6 +36,8 @@ _raw_samples: deque[int] = deque(maxlen=12)
 _offset = 0.0
 # Raw counts per gram until you run POST /weight/calibrate (typical cells: ~100–400).
 _scale = float(os.environ.get("HX711_DEFAULT_SCALE", "256.0"))
+# Minimum |raw − offset| to accept calibration (counts). Lower if your cell is low-sensitivity.
+_MIN_CALIB_DELTA_RAW = int(os.environ.get("HX711_MIN_CALIB_RAW_DELTA", "20"))
 _sensor_ok = False
 _reader_thread: threading.Thread | None = None
 _stop_reader = threading.Event()
@@ -189,12 +191,50 @@ def calibrate_with_known_mass(known_mass_g: float) -> dict[str, Any]:
 
     raw = get_smoothed_raw()
     if raw is None:
-        return {"ok": False, "message": "No stable reading"}
+        return {
+            "ok": False,
+            "message": "No stable reading yet — wait 2–3 s after placing weight, then retry.",
+            "samples": len(_raw_samples),
+        }
 
     delta_raw = raw - _offset
-    if abs(delta_raw) < 50:
-        return {"ok": False, "message": "Raw change too small — check load cell wiring"}
+    if abs(delta_raw) < _MIN_CALIB_DELTA_RAW:
+        hint = (
+            "The scale reading barely changed vs your last tare. "
+            "1) Tare with ONLY the empty basket/platform (no calibration weight). "
+            "2) Put the known weight on — do NOT tare again. "
+            "3) Wait 2–3 seconds, then POST calibrate again. "
+            "If raw/offset are identical, check HX711 wiring (DOUT/SCK swapped is common) "
+            "or set HX711_MIN_CALIB_RAW_DELTA=10 if the cell moves very little in raw counts."
+        )
+        return {
+            "ok": False,
+            "message": "Raw change too small for calibration",
+            "hint": hint,
+            "raw_smoothed": raw,
+            "offset_from_tare": _offset,
+            "delta_raw": delta_raw,
+            "min_delta_required": _MIN_CALIB_DELTA_RAW,
+        }
 
     _scale = delta_raw / known_mass_g
     _save_calibration()
     return {"ok": True, "scale": _scale, "message": f"Calibrated: {known_mass_g}g → scale={_scale:.6f}"}
+
+
+def debug_snapshot() -> dict[str, Any]:
+    """For GET /weight/debug — thread-safe peek at internals."""
+    with _lock:
+        samples = list(_raw_samples)
+    raw = get_smoothed_raw()
+    w_g, _, ok = get_weight_grams()
+    return {
+        "sensor_ok": ok,
+        "weight_g": w_g,
+        "raw_smoothed": raw,
+        "offset": _offset,
+        "scale": _scale,
+        "recent_raw_samples": samples[-12:],
+        "sample_count": len(samples),
+        "min_calib_delta_raw": _MIN_CALIB_DELTA_RAW,
+    }
