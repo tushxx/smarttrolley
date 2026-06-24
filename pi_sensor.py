@@ -15,8 +15,8 @@ WIRING (BCM pin numbers):
   Pi camera     → CSI ribbon cable (standard)
 
   HX711 load cell (optional — used by detection_service.py on the same Pi):
-  DOUT → GPIO 11
-  PD_SCK → GPIO 13
+  DOUT → GPIO 17
+  PD_SCK → GPIO 27
   (Override with env HX711_DOUT_PIN / HX711_SCK_PIN if wired differently.)
 
 SETUP ON PI:

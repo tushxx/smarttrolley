@@ -726,13 +726,13 @@ def capture_and_detect():
     })
 
 
-# ── HX711 load cell (GPIO DOUT / SCK — BCM pins via env, default 11 / 13) ─────
+# ── HX711 load cell (GPIO DOUT / SCK — BCM pins via env, default 17 / 27) ─────
 def _start_hx711_if_needed():
     try:
         from hx711_weight import start_weight_reader
 
-        dout = int(os.environ.get("HX711_DOUT_PIN", "11"))
-        pd_sck = int(os.environ.get("HX711_SCK_PIN", "13"))
+        dout = int(os.environ.get("HX711_DOUT_PIN", "17"))
+        pd_sck = int(os.environ.get("HX711_SCK_PIN", "27"))
         start_weight_reader(dout, pd_sck)
     except Exception as e:
         print(f"[WEIGHT] HX711 reader not started: {e}")
@@ -764,8 +764,8 @@ def weight_read():
                 "raw": raw,
                 "sensor_ok": ok,
                 "pins": {
-                    "dout_bcm": int(os.environ.get("HX711_DOUT_PIN", "11")),
-                    "sck_bcm": int(os.environ.get("HX711_SCK_PIN", "13")),
+                    "dout_bcm": int(os.environ.get("HX711_DOUT_PIN", "17")),
+                    "sck_bcm": int(os.environ.get("HX711_SCK_PIN", "27")),
                 },
             }
         )

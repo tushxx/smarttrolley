@@ -2,8 +2,8 @@
 HX711 load-cell interface for Raspberry Pi (BCM numbering).
 
 Wiring (as configured for SmartTrolley):
-  DOUT (data) → GPIO 11
-  PD_SCK (clock) → GPIO 13
+  DOUT (data) → GPIO 17
+  PD_SCK (clock) → GPIO 27
 
 Calibration: write weight_calibration.json next to this file (or path in HX711_CALIBRATION_PATH):
   { "scale": 215.0, "offset": 0 }
@@ -23,8 +23,8 @@ from pathlib import Path
 from typing import Any
 
 # BCM pins (user-specified)
-DEFAULT_DOUT = 11
-DEFAULT_PD_SCK = 13
+DEFAULT_DOUT = 17
+DEFAULT_PD_SCK = 27
 
 CALIB_PATH = os.environ.get(
     "HX711_CALIBRATION_PATH",
