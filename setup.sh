@@ -9,6 +9,18 @@ set -e
 echo "🛒 SmartTrolley Setup"
 echo "====================="
 
+# Check if running inside a virtual environment (recommended for Raspberry Pi Bookworm)
+if [ -z "$VIRTUAL_ENV" ]; then
+    echo "⚠️  Python virtual environment not detected!"
+    echo "   On Raspberry Pi OS (Bookworm and newer), you should use a virtual environment."
+    echo "   Please run the following commands instead:"
+    echo "     python3 -m venv venv"
+    echo "     source venv/bin/activate"
+    echo "     bash setup.sh"
+    echo ""
+    exit 1
+fi
+
 # ── 1. Node.js dependencies ──────────────────────────────────────
 echo ""
 echo "📦 Installing Node.js dependencies..."

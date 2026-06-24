@@ -30,48 +30,17 @@ import threading
 import time
 from pathlib import Path
 
-# ── Auto-install ultralytics if missing ──────────────────────────────────────
-def _pip_install(*packages):
-    result = subprocess.run(
-        [sys.executable, "-m", "pip", "install", *packages, "--quiet", "--no-warn-script-location"],
-        capture_output=True, text=True, timeout=300
-    )
-    return result.returncode == 0, result.stderr[-500:]
-
+# ── Check for ultralytics ────────────────────────────────────────────────────
 def _ensure_ultralytics():
     try:
-        import cv2  # noqa: F401
         import ultralytics  # noqa: F401
         return True
     except ImportError:
-        pass
+        print("[INFO] ultralytics (PyTorch) is not installed. Running in pure ONNX mode.")
+        return False
     except Exception as e:
         if "libGL" in str(e) or "libGL" in repr(e):
-            print("[INFO] OpenCV needs headless variant — installing opencv-python-headless...")
-            ok, err = _pip_install("opencv-python-headless")
-            if not ok:
-                print(f"[WARN] headless OpenCV install failed: {err}")
-
-    try:
-        import ultralytics  # noqa: F401
-        return True
-    except ImportError:
-        print("[INFO] ultralytics not found — attempting pip install (this may take a minute)...")
-
-    ok, err = _pip_install("ultralytics")
-    if ok:
-        try:
-            import cv2 # type: ignore  # noqa: F401
-        except Exception as e2:
-            if "libGL" in str(e2):
-                print("[INFO] Switching to opencv-python-headless...")
-                _pip_install("opencv-python-headless")
-                subprocess.run([sys.executable, "-m", "pip", "uninstall", "-y", "opencv-python"],
-                               capture_output=True)
-        print("[INFO] ✅ ultralytics installed successfully")
-        return True
-    else:
-        print(f"[WARN] pip install failed: {err}")
+            print("[WARN] OpenCV needs graphics system libraries (e.g. libGL1-mesa-glx).")
         return False
 
 ULTRALYTICS_OK = _ensure_ultralytics()
@@ -414,66 +383,113 @@ def run_inference_from_jpeg(jpeg_bytes: bytes) -> list:
 def load_model():
     global model, MODEL_LOADED, model_names, INFERENCE_ENGINE
 
-    if not ULTRALYTICS_OK:
-        print("[WARN] ultralytics unavailable.")
-        return
+    # 1. Try Pure ONNX first (no ultralytics needed)
+    onnx_path = None
+    for path in MODEL_PATHS:
+        opt_onnx = path.rsplit(".", 1)[0] + ".onnx"
+        if os.path.exists(opt_onnx):
+            onnx_path = opt_onnx
+            break
 
-    try:
-        from ultralytics import YOLO  # type: ignore
+    if onnx_path and ONNX_OK:
+        print(f"[INFO] Found ONNX model at: {onnx_path}")
+        try:
+            if _load_onnx_session(onnx_path):
+                # Try to parse class names from ONNX metadata
+                meta = ort_session.get_modelmeta().custom_metadata_map
+                if "names" in meta:
+                    try:
+                        import ast
+                        parsed_names = ast.literal_eval(meta["names"])
+                        model_names = {int(k): v for k, v in parsed_names.items()}
+                        print(f"[INFO] Loaded class names from ONNX metadata: {model_names}")
+                    except Exception as e:
+                        try:
+                            import json
+                            parsed_names = json.loads(meta["names"].replace("'", '"'))
+                            model_names = {int(k): v for k, v in parsed_names.items()}
+                            print(f"[INFO] Loaded class names from ONNX metadata (JSON): {model_names}")
+                        except Exception as e2:
+                            print(f"[WARN] Failed to parse ONNX metadata names: {e}, {e2}")
+                
+                # Fallback if names parsing failed
+                if not model_names:
+                    print("[WARN] No class names found in ONNX metadata. Detections will return integer IDs.")
+                    
+                INFERENCE_ENGINE = "onnx"
+                MODEL_LOADED = True
+        except Exception as e:
+            print(f"[WARN] ONNX load failed: {e}")
 
-        pt_path = None
-        for path in MODEL_PATHS:
-            if os.path.exists(path):
-                pt_path = path
-                break
-
-        if not pt_path:
-            print("[WARN] No model file found. Looked for:", MODEL_PATHS)
+    # 2. Fallback to PyTorch (ultralytics) if ONNX failed or was not found
+    if not MODEL_LOADED:
+        if not ULTRALYTICS_OK:
+            print("[WARN] ONNX model not found, and ultralytics (PyTorch) is not installed.")
+            print("[INFO] Please convert your model to ONNX on your development machine (Mac) first:")
+            print("       python3 -c \"from ultralytics import YOLO; YOLO('attached_assets/my_model (1).pt').export(format='onnx', imgsz=320, half=False, simplify=True)\"")
+            print("       And then transfer the resulting .onnx file to the Pi.")
             return
 
-        print(f"[INFO] Loading YOLO model from: {pt_path}")
-        model = YOLO(pt_path)
-        model_names = dict(model.names)
-        MODEL_LOADED = True
-        print(f"[INFO] ✅ Model loaded. Classes: {model_names}")
+        try:
+            from ultralytics import YOLO  # type: ignore
 
-        # ── Try ONNX acceleration ────────────────────────────────────────
-        if ONNX_OK:
-            onnx_path = _try_export_onnx(pt_path)
-            if onnx_path:
-                try:
-                    if _load_onnx_session(onnx_path):
-                        INFERENCE_ENGINE = "onnx"
-                        print("[INFO] 🚀 Using ONNX Runtime for inference (fast mode)")
-                    else:
+            pt_path = None
+            for path in MODEL_PATHS:
+                if os.path.exists(path):
+                    pt_path = path
+                    break
+
+            if not pt_path:
+                print("[WARN] No model file found. Looked for:", MODEL_PATHS)
+                return
+
+            print(f"[INFO] Loading YOLO model from: {pt_path}")
+            model = YOLO(pt_path)
+            model_names = dict(model.names)
+            MODEL_LOADED = True
+            print(f"[INFO] ✅ Model loaded. Classes: {model_names}")
+
+            # Try to export ONNX for next time
+            if ONNX_OK:
+                onnx_path = _try_export_onnx(pt_path)
+                if onnx_path:
+                    try:
+                        if _load_onnx_session(onnx_path):
+                            INFERENCE_ENGINE = "onnx"
+                            print("[INFO] 🚀 Using ONNX Runtime for inference (fast mode)")
+                        else:
+                            INFERENCE_ENGINE = "pytorch"
+                            print("[INFO] Using PyTorch (ONNX input size mismatch or load skipped)")
+                    except Exception as e:
+                        print(f"[WARN] ONNX session load failed, falling back to PyTorch: {e}")
                         INFERENCE_ENGINE = "pytorch"
-                        print("[INFO] Using PyTorch (ONNX input size mismatch or load skipped)")
-                except Exception as e:
-                    print(f"[WARN] ONNX session load failed, falling back to PyTorch: {e}")
+                else:
                     INFERENCE_ENGINE = "pytorch"
             else:
                 INFERENCE_ENGINE = "pytorch"
-        else:
-            INFERENCE_ENGINE = "pytorch"
 
-        # ── Warmup ───────────────────────────────────────────────────────
-        print(f"[INFO] Warming up model ({INFERENCE_ENGINE})…")
-        dummy = Image.fromarray(np.zeros((INFERENCE_SIZE, INFERENCE_SIZE, 3), dtype="uint8"))
-        run_inference(dummy)
-        print(f"[INFO] ✅ Model warm — inference engine: {INFERENCE_ENGINE}")
-        print(
-            f"[INFO] Wide-angle / speed: crop={DETECTION_CENTER_CROP} "
-            f"cam={CAM_MAIN_WIDTH}x{CAM_MAIN_HEIGHT} infer={INFERENCE_SIZE} "
-            f"conf≥{CONFIDENCE_THRESHOLD}"
-        )
+        except Exception as e:
+            print(f"[ERROR] Failed to load model: {e}")
+            traceback.print_exc()
 
-        stats = _get_timing_stats()
-        if stats["samples"] > 0:
-            print(f"[INFO] Warmup inference: {stats['avg_ms']:.0f}ms")
+    # 3. Warmup if loaded
+    if MODEL_LOADED:
+        try:
+            print(f"[INFO] Warming up model ({INFERENCE_ENGINE})…")
+            dummy = Image.fromarray(np.zeros((INFERENCE_SIZE, INFERENCE_SIZE, 3), dtype="uint8"))
+            run_inference(dummy)
+            print(f"[INFO] ✅ Model warm — inference engine: {INFERENCE_ENGINE}")
+            print(
+                f"[INFO] Wide-angle / speed: crop={DETECTION_CENTER_CROP} "
+                f"cam={CAM_MAIN_WIDTH}x{CAM_MAIN_HEIGHT} infer={INFERENCE_SIZE} "
+                f"conf≥{CONFIDENCE_THRESHOLD}"
+            )
 
-    except Exception as e:
-        print(f"[ERROR] Failed to load model: {e}")
-        traceback.print_exc()
+            stats = _get_timing_stats()
+            if stats["samples"] > 0:
+                print(f"[INFO] Warmup inference: {stats['avg_ms']:.0f}ms")
+        except Exception as e:
+            print(f"[ERROR] Model warmup failed: {e}")
 
 
 load_model()

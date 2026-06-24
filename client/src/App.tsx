@@ -8,6 +8,7 @@ import Landing from "@/pages/landing";
 import Home from "@/pages/home";
 import Checkout from "@/pages/checkout";
 import IoTPage from "@/pages/iot";
+import ReceiptPage from "@/pages/receipt";
 import NotFound from "@/pages/not-found";
 
 function Router() {
@@ -21,6 +22,7 @@ function Router() {
         <>
           <Route path="/" component={Home} />
           <Route path="/checkout" component={Checkout} />
+          <Route path="/receipt/:orderId" component={ReceiptPage} />
           <Route path="/iot" component={IoTPage} />
         </>
       )}
@@ -41,3 +43,4 @@ function App() {
 }
 
 export default App;
+

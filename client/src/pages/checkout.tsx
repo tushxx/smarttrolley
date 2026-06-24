@@ -46,13 +46,13 @@ const CheckoutForm = ({ cart }: { cart: CartWithItems }) => {
       const response = await apiRequest("POST", "/api/verify-payment", paymentData);
       return response.json();
     },
-    onSuccess: () => {
+    onSuccess: (data) => {
       toast({
         title: "🎉 Payment Successful!",
-        description: "Thank you for your purchase! Redirecting to home...",
+        description: "Thank you for your purchase! Generating your receipt...",
         className: "bg-green-50 border-green-200",
       });
-      setTimeout(() => setLocation("/"), 2000);
+      setTimeout(() => setLocation(`/receipt/${data.orderId}`), 1200);
     },
     onError: (error) => {
       toast({
@@ -63,6 +63,7 @@ const CheckoutForm = ({ cart }: { cart: CartWithItems }) => {
       console.error("Payment verification error:", error);
     },
   });
+
 
   const initiateRazorpayPayment = (orderData: any) => {
     const options = {

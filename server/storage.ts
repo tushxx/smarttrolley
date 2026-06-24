@@ -15,6 +15,7 @@ import {
   type InsertOrder,
   type CartItemWithProduct,
   type CartWithItems,
+  type OrderWithItems,
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, and, desc } from "drizzle-orm";
@@ -39,6 +40,7 @@ export interface IStorage {
   createOrder(userId: string, cartId: string, orderData: InsertOrder): Promise<Order>;
   updateOrderStatus(orderId: string, status: string, razorpayOrderId?: string, razorpayPaymentId?: string): Promise<Order>;
   getUserOrders(userId: string): Promise<Order[]>;
+  getOrderWithItems(orderId: string, userId: string): Promise<OrderWithItems | undefined>;
 }
 
 // ── In-memory fallback storage ────────────────────────────────────────────────
@@ -177,6 +179,13 @@ class MemStorage implements IStorage {
   async getUserOrders(userId: string) {
     return Array.from(this.orderMap.values()).filter(o => o.userId === userId);
   }
+  async getOrderWithItems(orderId: string, userId: string): Promise<OrderWithItems | undefined> {
+    const order = this.orderMap.get(orderId);
+    if (!order || order.userId !== userId) return undefined;
+    // For MemStorage: if the cart is still around, get its items; otherwise return empty items
+    const cartItems = order.cartId ? await this.getCartWithItems(order.cartId) : undefined;
+    return { ...order, items: cartItems?.items || [] };
+  }
 }
 
 // ── Database storage ──────────────────────────────────────────────────────────
@@ -273,6 +282,26 @@ export class DatabaseStorage implements IStorage {
   }
   async getUserOrders(userId: string) {
     return db!.select().from(orders).where(eq(orders.userId, userId)).orderBy(desc(orders.createdAt));
+  }
+  async getOrderWithItems(orderId: string, userId: string): Promise<OrderWithItems | undefined> {
+    const [order] = await db!.select().from(orders).where(
+      and(eq(orders.id, orderId), eq(orders.userId, userId))
+    );
+    if (!order || !order.cartId) return order ? { ...order, items: [] } : undefined;
+    const itemRows = await db!
+      .select({
+        id: cartItems.id,
+        cartId: cartItems.cartId,
+        productId: cartItems.productId,
+        quantity: cartItems.quantity,
+        measuredWeight: cartItems.measuredWeight,
+        detectedAt: cartItems.detectedAt,
+        product: products,
+      })
+      .from(cartItems)
+      .leftJoin(products, eq(cartItems.productId, products.id))
+      .where(eq(cartItems.cartId, order.cartId));
+    return { ...order, items: itemRows as CartItemWithProduct[] };
   }
 }
 

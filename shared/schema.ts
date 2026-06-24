@@ -127,3 +127,4 @@ export type InsertOrder = z.infer<typeof insertOrderSchema>;
 // Extended types for API responses
 export type CartItemWithProduct = CartItem & { product: Product };
 export type CartWithItems = ShoppingCart & { items: CartItemWithProduct[] };
+export type OrderWithItems = Order & { items: CartItemWithProduct[] };

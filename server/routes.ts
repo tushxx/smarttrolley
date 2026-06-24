@@ -504,7 +504,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       await storage.updateOrderStatus(orderId, "paid", razorpayOrderId, paymentId);
-      res.json({ success: true });
+      res.json({ success: true, orderId });
     } catch {
       res.status(400).json({ message: 'Payment verification failed' });
     }
@@ -517,6 +517,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.json(orders);
     } catch {
       res.status(500).json({ message: "Failed to fetch orders" });
+    }
+  });
+
+  app.get('/api/orders/:orderId', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.sessionUser.id;
+      const order = await storage.getOrderWithItems(req.params.orderId, userId);
+      if (!order) return res.status(404).json({ message: "Order not found" });
+      res.json(order);
+    } catch {
+      res.status(500).json({ message: "Failed to fetch order" });
     }
   });
 
