@@ -164,7 +164,7 @@ def get_weight_grams() -> tuple[float, int | None, bool]:
     if raw is None:
         return 0.0, None, _sensor_ok
 
-    w = (raw - _offset) / _scale if _scale else 0.0
+    w = (_offset - raw) / _scale if _scale else 0.0
     return float(w), raw, _sensor_ok
 
 
