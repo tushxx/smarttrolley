@@ -197,7 +197,7 @@ def calibrate_with_known_mass(known_mass_g: float) -> dict[str, Any]:
             "samples": len(_raw_samples),
         }
 
-    delta_raw = raw - _offset
+    delta_raw = _offset - raw
     if abs(delta_raw) < _MIN_CALIB_DELTA_RAW:
         hint = (
             "The scale reading barely changed vs your last tare. "
