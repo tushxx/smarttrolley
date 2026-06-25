@@ -165,7 +165,7 @@ def get_weight_grams() -> tuple[float, int | None, bool]:
         return 0.0, None, _sensor_ok
 
     w = (_offset - raw) / _scale if _scale else 0.0
-    return float(w), raw, _sensor_ok
+return round(float(w), 1), raw, _sensor_ok
 
 
 def tare() -> dict[str, Any]:
