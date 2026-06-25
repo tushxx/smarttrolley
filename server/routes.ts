@@ -1,7 +1,7 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
 import Razorpay from "razorpay";
-import { storage } from "./storage";
+import { storage, PRODUCT_WEIGHT_TOLERANCE_G } from "./storage";
 import { setupAuth, isAuthenticated } from "./auth";
 import { insertCartItemSchema } from "@shared/schema";
 import { z } from "zod";
@@ -407,6 +407,35 @@ export async function registerRoutes(app: Express): Promise<Server> {
           message: `${product.name} already in cart`,
           product,
         });
+      }
+
+      // ── Weight Verification (optional) ──────────────────────────────────────
+      // If the caller provides scale_weight_g AND the product has a known weight,
+      // verify the reading is within ±PRODUCT_WEIGHT_TOLERANCE_G before adding.
+      const { scale_weight_g } = req.body;
+      if (
+        scale_weight_g !== undefined &&
+        scale_weight_g !== null &&
+        product.weight &&
+        product.unit === "each"
+      ) {
+        const expectedG = parseFloat(product.weight.toString());
+        const measuredG = parseFloat(String(scale_weight_g));
+        const diff = Math.abs(measuredG - expectedG);
+        if (diff > PRODUCT_WEIGHT_TOLERANCE_G) {
+          console.warn(
+            `[IoT] Weight mismatch for "${product.name}": expected ${expectedG}g ±${PRODUCT_WEIGHT_TOLERANCE_G}g, got ${measuredG}g`
+          );
+          return res.status(422).json({
+            success: false,
+            weightMismatch: true,
+            message: `Weight mismatch: scale reads ${measuredG}g but "${product.name}" should be ${expectedG}g ±${PRODUCT_WEIGHT_TOLERANCE_G}g. Please check the item.`,
+            expected_g: expectedG,
+            measured_g: measuredG,
+            tolerance_g: PRODUCT_WEIGHT_TOLERANCE_G,
+          });
+        }
+        console.log(`[IoT] Weight OK for "${product.name}": ${measuredG}g (expected ${expectedG}g ±${PRODUCT_WEIGHT_TOLERANCE_G}g)`);
       }
 
       // Add to cart

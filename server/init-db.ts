@@ -119,6 +119,7 @@ export async function initializeDatabase() {
 
       // Class names match exactly what the YOLO model outputs
       // Model classes: {0:'APPY FIZZ', 1:'FROOTI', 2:'MOISTURIZER', 3:'SOAP', 4:'WATER BOTTLE'}
+      // Weights measured with calibrated HX711 load cell (±45g tolerance)
       const yoloProducts = [
         {
           name: 'Appy Fizz',
@@ -128,6 +129,7 @@ export async function initializeDatabase() {
           detection_class: 'APPY FIZZ',
           category: 'Beverages',
           image_url: 'https://images.unsplash.com/photo-1622483767028-3f66f32aef97?w=300&h=300&fit=crop',
+          weight: 257.000,
         },
         {
           name: 'Frooti',
@@ -137,6 +139,7 @@ export async function initializeDatabase() {
           detection_class: 'FROOTI',
           category: 'Beverages',
           image_url: 'https://images.unsplash.com/photo-1546173159-315724a31696?w=300&h=300&fit=crop',
+          weight: 347.000,
         },
         {
           name: 'Moisturizer',
@@ -146,6 +149,7 @@ export async function initializeDatabase() {
           detection_class: 'MOISTURIZER',
           category: 'Personal Care',
           image_url: 'https://images.unsplash.com/photo-1611930022073-b7a4ba5fcccd?w=300&h=300&fit=crop',
+          weight: 307.000,
         },
         {
           name: 'Soap',
@@ -155,6 +159,7 @@ export async function initializeDatabase() {
           detection_class: 'SOAP',
           category: 'Personal Care',
           image_url: 'https://images.unsplash.com/photo-1600857544200-b2f666a9a2ec?w=300&h=300&fit=crop',
+          weight: null,
         },
         {
           name: 'Water Bottle',
@@ -164,14 +169,15 @@ export async function initializeDatabase() {
           detection_class: 'WATER BOTTLE',
           category: 'Beverages',
           image_url: 'https://images.unsplash.com/photo-1602143407151-7111542de6e8?w=300&h=300&fit=crop',
+          weight: null,
         },
       ];
 
       for (const p of yoloProducts) {
         await db.execute(sql`
-          INSERT INTO products (name, brand, description, price, detection_class, category, image_url)
-          VALUES (${p.name}, ${p.brand}, ${p.description}, ${p.price}, ${p.detection_class}, ${p.category}, ${p.image_url})
-          ON CONFLICT (detection_class) DO NOTHING
+          INSERT INTO products (name, brand, description, price, detection_class, category, image_url, weight)
+          VALUES (${p.name}, ${p.brand}, ${p.description}, ${p.price}, ${p.detection_class}, ${p.category}, ${p.image_url}, ${p.weight})
+          ON CONFLICT (detection_class) DO UPDATE SET weight = EXCLUDED.weight
         `);
       }
 
@@ -194,6 +200,21 @@ export async function initializeDatabase() {
 
       console.log('✅ Products seeded for YOLO classes: APPY FIZZ, FROOTI, MOISTURIZER, SOAP, WATER BOTTLE');
     }
+
+    // ── Calibrated weights (±45 g) — update on every startup so changes take effect ──
+    const calibratedWeights = [
+      { detection_class: 'APPY FIZZ',   weight: 257.000 },
+      { detection_class: 'FROOTI',      weight: 347.000 },
+      { detection_class: 'MOISTURIZER', weight: 307.000 },
+    ];
+    for (const { detection_class, weight } of calibratedWeights) {
+      await db.execute(sql`
+        UPDATE products
+        SET weight = ${weight}, unit = 'each'
+        WHERE detection_class = ${detection_class}
+      `);
+    }
+    console.log('⚖️  Calibrated weights applied: APPY FIZZ=257g, FROOTI=347g, MOISTURIZER=307g (±45g)');
 
     // Log products
     const { rows: prods } = await db.execute(sql`SELECT name, detection_class, price FROM products ORDER BY name`);
