@@ -203,9 +203,9 @@ export async function initializeDatabase() {
 
     // ── Calibrated weights (±45 g) — update on every startup so changes take effect ──
     const calibratedWeights = [
-      { detection_class: 'APPY FIZZ',   weight: 257.000 },
-      { detection_class: 'FROOTI',      weight: 347.000 },
-      { detection_class: 'MOISTURIZER', weight: 307.000 },
+      { detection_class: 'APPY FIZZ',   weight: 240.000 },
+      { detection_class: 'FROOTI',      weight: 304.000 },
+      { detection_class: 'MOISTURIZER', weight: 295.000 },
     ];
     for (const { detection_class, weight } of calibratedWeights) {
       await db.execute(sql`
@@ -214,7 +214,7 @@ export async function initializeDatabase() {
         WHERE detection_class = ${detection_class}
       `);
     }
-    console.log('⚖️  Calibrated weights applied: APPY FIZZ=257g, FROOTI=347g, MOISTURIZER=307g (±45g)');
+    console.log('⚖️  Calibrated weights applied: APPY FIZZ=240g, FROOTI=304g, MOISTURIZER=295g (±100g)');
 
     // Log products
     const { rows: prods } = await db.execute(sql`SELECT name, detection_class, price FROM products ORDER BY name`);

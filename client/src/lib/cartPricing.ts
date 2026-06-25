@@ -4,7 +4,7 @@ import type { CartItemWithProduct, CartWithItems } from "@shared/schema";
 export const GRAM_PENDING_THRESHOLD_G = 3;
 
 /** Unexplained scale reading above this triggers an error (no matching scan). */
-export const WEIGHT_ERROR_THRESHOLD_G = 45;
+export const WEIGHT_ERROR_THRESHOLD_G = 100;
 
 /** Minimum delta before we trust a reading for auto-assigning weight to a pending line item. */
 export const WEIGHT_ASSIGN_MIN_G = 25;

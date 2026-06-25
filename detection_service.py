@@ -89,7 +89,7 @@ MODEL_PATHS = [
 # Inference / camera (override with env on the Pi)
 # Smaller INFERENCE_SIZE = fewer ms (delete stale *.onnx next to .pt to re-export if you change size).
 INFERENCE_SIZE = int(os.environ.get("INFERENCE_SIZE", "320"))
-CONFIDENCE_THRESHOLD = float(os.environ.get("CONFIDENCE_THRESHOLD", "0.40"))
+CONFIDENCE_THRESHOLD = float(os.environ.get("CONFIDENCE_THRESHOLD", "0.60"))
 # Wide-angle lenses: use a center crop before YOLO so the product fills more of the 320² tensor (1.0 = no crop).
 DETECTION_CENTER_CROP = float(os.environ.get("DETECTION_CENTER_CROP", "0.78"))
 CAM_MAIN_WIDTH = int(os.environ.get("CAM_MAIN_WIDTH", "1280"))
