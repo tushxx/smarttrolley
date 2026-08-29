@@ -43,20 +43,16 @@ export interface IStorage {
   getOrderWithItems(orderId: string, userId: string): Promise<OrderWithItems | undefined>;
 }
 
-// ── In-memory fallback storage ────────────────────────────────────────────────
-// Used when the database is unavailable. Seeded with the 5 YOLO-trained products.
+
 function uuid() {
   return Math.random().toString(36).slice(2) + Date.now().toString(36);
 }
 
-// Real measured product weights (grams) — used for weight verification on the HX711 scale.
-// Tolerance: ±45g — if scale reads within this range the product is confirmed.
+
 export const PRODUCT_WEIGHT_TOLERANCE_G = 100;
 
-// Class names MUST match what the YOLO model outputs (case-sensitive from model.names)
-// Model classes: {0: 'APPY FIZZ', 1: 'FROOTI', 2: 'MOISTURIZER', 3: 'SOAP', 4: 'WATER BOTTLE'}
 const DEMO_PRODUCTS: Product[] = [
-  { id: "p1", name: "Appy Fizz",      brand: "Parle Agro",  description: "Sparkling apple juice drink 250ml",          price: "40.00",  detectionClass: "APPY FIZZ",     imageUrl: "https://images.unsplash.com/photo-1622483767028-3f66f32aef97?w=300&h=300&fit=crop", category: "Beverages",     weight: "240.000", unit: "each", createdAt: new Date() },
+  { id: "p1", name: "maaza",      brand: "Parle Agro",  description: "Sparkling apple juice drink 250ml",          price: "40.00",  detectionClass: "APPY FIZZ",     imageUrl: "https://images.unsplash.com/photo-1622483767028-3f66f32aef97?w=300&h=300&fit=crop", category: "Beverages",     weight: "240.000", unit: "each", createdAt: new Date() },
   { id: "p2", name: "Frooti",         brand: "Parle Agro",  description: "Mango fruit drink 200ml Tetra Pak",          price: "20.00",  detectionClass: "FROOTI",        imageUrl: "https://images.unsplash.com/photo-1546173159-315724a31696?w=300&h=300&fit=crop", category: "Beverages",     weight: "304.000", unit: "each", createdAt: new Date() },
   { id: "p3", name: "Moisturizer",    brand: "Nivea",       description: "Daily moisturizing cream for all skin types", price: "299.00", detectionClass: "MOISTURIZER",   imageUrl: "https://images.unsplash.com/photo-1611930022073-b7a4ba5fcccd?w=300&h=300&fit=crop", category: "Personal Care", weight: "295.000", unit: "each", createdAt: new Date() },
   { id: "p4", name: "Soap",           brand: "Dove",        description: "Moisturizing beauty bar soap 100g",           price: "55.00",  detectionClass: "SOAP",          imageUrl: "https://images.unsplash.com/photo-1600857544200-b2f666a9a2ec?w=300&h=300&fit=crop", category: "Personal Care", weight: null,      unit: "each", createdAt: new Date() },
